@@ -1,0 +1,838 @@
+# 現在のアプリで使われる指示・実装内容
+
+作成日: 2026-10-17
+
+## 実行時プロンプトの有無
+
+現在のStreamlitアプリは、LLM（生成AI）へ指示文を送る機能を持っていません。そのため、アプリの実行時に使われるAIプロンプトはありません。ISBN検索、書誌情報取得、Cコード分類、画像URL取得などは、下記のPythonコードと外部API呼び出しで処理されます。
+
+## 現在のアプリ本体
+
+- 実行ファイル: `outputs/content_record_app.py`
+- 画面: Streamlit
+- データ保存: `outputs/records.json`
+- ISBNの書誌検索: OpenBD API
+- 表紙画像: 書誌情報に含まれる画像URLを利用し、取得できない場合はOpen LibraryのISBN表紙URLを利用
+- `app.py` と `components.py` は別の複数ファイル版の名残です。下記の単一ファイルアプリは、それらを読み込まず単独で動作します。
+
+## 開発時に渡された元の実装プロンプト
+
+次の内容はユーザー提供の `prompt_A_day1(1).md` の全文です。これは開発時の指示であり、アプリ実行時のAIプロンプトではありません。元指示には「ISBN取得を今日やらない」とありますが、その後のユーザー依頼によりISBN検索・分類・表紙取得が追加されており、現在のコードが最新の実装状態です。
+
+~~~~markdown
+# 1日目夕方まで: 担当A向け実装プロンプト（Python / Streamlit）
+
+以下をそのままコーディング用AI（Claude Code など）に貼り付ける。リポジトリ直下に `docs/spec.md`（v0.4）がある前提。
+
+---
+
+## プロンプト本文
+
+あなたは Python / Streamlit のエンジニアです。`docs/spec.md`（コンテンツ記録アプリ 仕様書 v0.4）を最初に全部読み、仕様に従って「担当A（フロント①・入力系）」の **1日目夕方までの Must** を、下の順番で実装してください。
+
+### 作業の順番
+
+| 順番 | 作業 | メモ |
+|---|---|---|
+| 1 | `pages/1_記録を追加.py`: カテゴリ選択と、カテゴリ別の入力欄の切り替え（6種） | アニメは24分、ドラマは45分を既定値にする。漫画はページ数と巻数のどちらか一方が必須。その他は量の入力欄なし |
+| 2 | 同じ画面に、出版社（本・漫画）、掲載誌（漫画）、制作会社（映画・アニメ・ドラマ）の入力欄を追加 | 過去の値を候補に出すのは Should なので、今日は文字入力だけでよい |
+| 3 | `pages/2_記録一覧.py`: 記録カードの一覧と削除 | カード部品は `components.py` に置く。表紙が無いときはカテゴリごとの既定アイコンを出す |
+| 4 | C の `storage.py` ができたら、サンプルの JSON を読む処理を関数呼び出しに差し替える | `ValueError` が出たら、そのメッセージを画面に表示する |
+
+1 → 2 → 3 の順に作り、各ステップごとに動作確認してから次へ進むこと。**今日やらないこと**: タグの選択・作成（2日目 Must）、過去の値の候補表示、表紙アップロード、ISBN 取得、バーコード、編集画面。
+
+### 守るルール（仕様書 §2・§11 より）
+- 言語は Python 3.11+、画面は Streamlit のみ。HTML/CSS/JS は書かない。
+- 画面のファイルは **JSON を直接読み書きしない。集計の計算もしない。** データ操作は `storage` モジュールの関数を呼ぶだけ。
+- 入力チェックの責任は `storage.py` 側にある。ルール違反は `ValueError` で返ってくるので、そのメッセージを `st.error` で表示する。画面側は最低限の必須チェックのみ。
+- 触ってよいファイルは `pages/1_記録を追加.py`、`pages/2_記録一覧.py`、`components.py`、暫定の `dev_storage.py`、サンプルの `data/records.json` だけ。`storage.py` / `stats.py` / `external_api.py` / `app.py` / `pages/3_タグ管理.py` は触らない（他メンバー担当）。
+
+### 前提: C の `storage.py` はまだ無い（作業 1〜3 のあいだ）
+サンプルの JSON（`data/records.json`）で画面を作り、あとで関数呼び出しに差し替えられるよう、**JSON を読み書きする処理を `dev_storage.py` の1か所に閉じ込めて**ください。
+
+1. `dev_storage.py` は、仕様書 §11 の関数のうち今回使う `load_records` / `get_record` / `add_record` / `delete_record` を **同じ名前・引数・戻り値** で実装した暫定版。`data/records.json` を読み書きし、ファイルが無ければ空のリスト `[]` で初期化する。
+   - `add_record` は id（uuid4）・`created_at`・`updated_at`（`+09:00`）を自動付与し、id を返す。
+   - `add_record` は簡易チェックで `ValueError` を投げる: タイトル空、完了日が未来、カテゴリに合わない metrics（漫画で pages も volumes も無い、数値が0以下など）。
+2. 画面側は次のように import する。
+   ```python
+   try:
+       import storage
+   except ImportError:
+       import dev_storage as storage
+   ```
+3. `data/records.json` に、6カテゴリが1件ずつ以上入ったサンプルデータ（仕様書 §6.2 の形）を作る。表紙なし（`image: {"type": "none", "value": null}`）の記録も含める。
+
+### 実装するもの
+
+**作業1: 記録を追加（カテゴリ別の入力欄）**
+- カテゴリ選択（本・漫画・アニメ・映画・ドラマ・その他の6種、この順序）は `st.form` の**外**に置く（form 内だと切り替えで再描画されないため）。
+- 共通項目: タイトル（必須）、作者・監督など、完了日（必須・既定は今日）、評価（1〜5、未選択可）、感想。
+- カテゴリ別の量の入力欄:
+  - 本: ページ数
+  - 漫画: ページ数・巻数（**どちらか一方は必須**。両方空はエラー）
+  - 映画: 上映時間（分）
+  - アニメ: 話数、1話あたりの分数（既定 **24**）
+  - ドラマ: 話数、1話あたりの分数（既定 **45**）
+  - その他: 量の入力欄なし（`metrics` は `{}`）
+- 保存ボタンで `add_record` を呼ぶ。成功したら `st.success` を出して入力をリセットする。`ValueError` は `st.error` にメッセージをそのまま出す。
+- 保存データの形は仕様書 §6.2 に合わせる。`tag_ids` は `[]`、`isbn` は `None`、`image` は `{"type": "none", "value": None}`。
+
+**作業2: 作品の項目（文字入力のみ）**
+- 同じ画面に追加: 出版社（本・漫画）、掲載誌（漫画）、制作会社（映画・アニメ・ドラマ）。`st.text_input` でよい（過去の値の候補表示は Should なので今日は作らない）。
+- カテゴリ外の項目は表示せず、`None` で保存する。空欄は `None` にする。
+
+**作業3: 記録一覧と削除**
+- `components.py` に置く部品:
+  - `CATEGORY_LABELS` と `CATEGORY_ICONS`: book=本📚, manga=漫画📖, anime=アニメ📺, movie=映画🎬, drama=ドラマ🎞️, other=その他🎫
+  - `render_cover(record, width=120)`: `image.type` が `url` / `upload` で画像があればそれを表示。`none` や画像が見つからない場合はカテゴリ別の既定アイコンを大きく表示
+  - `format_metrics(record) -> str`: 「320ページ」「124分」「28話×24分」「1巻/192ページ」などの量の文字列。`other` は空文字
+  - `render_record_card(record)`: 表紙・タイトル・カテゴリ・作者・完了日・評価（★）・量を表示
+- `pages/2_記録一覧.py`: 完了日の新しい順に `render_record_card` で表示。各カードに削除ボタンを付け、押すと確認を挟んでから `delete_record` を呼び、成功後に `st.rerun()`。0件のときは「まだ記録がありません。「記録を追加」から登録しましょう」。件数をページ上部に表示。
+
+**作業4: C の `storage.py` への差し替え（C の関数ができたら）**
+- `dev_storage.py` を削除し、画面側の `import storage` が本物を使うことを確認する。
+- 画面側のコードは変更しない（作業 1〜3 で `storage` 経由にしてあるため）。変更が必要になった場合は、本物の関数と暫定版の違い（引数・戻り値・例外）を最後の報告に書く。
+- `ValueError` が出たら、そのメッセージを `st.error` で表示する動作を、実際にわざと不正入力して確認する。
+
+### 受け入れ条件（自分で動作確認すること）
+1. サイドバーに「記録を追加」「記録一覧」が出る（`app.py` が無ければ確認用の最小版を作ってよい。ただし B の担当なので「あとで B のものに置き換える」とコメントに書く）。
+2. 6カテゴリそれぞれで入力欄が切り替わり、アニメは24分、ドラマは45分が初期値で、その他には量の入力欄が出ない。
+3. 漫画で pages・volumes を両方空にして保存するとエラーが表示される。片方だけなら保存できる。完了日を未来にすると保存できない。
+4. 出版社・掲載誌・制作会社が、対象カテゴリの画面だけに出て、保存データのカテゴリ外の項目は `null` になる。
+5. 保存した記録が一覧に出る。表紙のない記録にカテゴリ別の既定アイコンが出る。
+6. 削除すると一覧から消え、`data/records.json` からも消える。
+7. `dev_storage.py` を消して `storage.py` を置いても、画面側のコードを変えずに動く。
+
+### 出力
+- 作成・変更したファイルの全文。
+- 動作確認の手順（コマンドと操作）。
+- 仕様書とずれた点・判断した点があれば最後に箇条書きで。
+~~~~
+
+## 現在のアプリ本体コード全文
+
+~~~~python
+"""Single-file Streamlit app for recording books and other content."""
+
+from __future__ import annotations
+
+import json
+import re
+from copy import deepcopy
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from uuid import uuid4
+
+import streamlit as st
+
+
+JST = timezone(timedelta(hours=9))
+DATA_FILE = Path(__file__).with_name("records.json")
+
+CATEGORY_LABELS = {
+    "book": "本",
+    "manga": "漫画",
+    "anime": "アニメ",
+    "movie": "映画",
+    "drama": "ドラマ",
+    "other": "その他",
+}
+CATEGORY_ICONS = {
+    "book": "📚",
+    "manga": "📖",
+    "anime": "📺",
+    "movie": "🎬",
+    "drama": "🎞️",
+    "other": "🎫",
+}
+ALLOWED_METRICS = {
+    "book": {"pages"},
+    "manga": {"pages", "volumes"},
+    "anime": {"episodes", "minutes_per_episode"},
+    "movie": {"duration_minutes"},
+    "drama": {"episodes", "minutes_per_episode"},
+    "other": set(),
+}
+
+C_CODE_AUDIENCES = {
+    "0": "一般", "1": "教養", "2": "実用", "3": "専門", "4": "検定教科書・消費税非課税品",
+    "5": "女性向け", "6": "小中学生向け学習参考書", "7": "高校生向け学習参考書",
+    "8": "児童向け", "9": "雑誌扱いコミックス・ムック",
+}
+C_CODE_FORMATS = {
+    "0": "単行本", "1": "文庫", "2": "新書", "3": "全集・双書", "4": "ムック・その他",
+    "5": "辞典・事典", "6": "図鑑", "7": "絵本", "8": "記録媒体・オーディオブック", "9": "コミックス",
+}
+C_CODE_MAIN_CATEGORIES = {
+    "0": "総記", "1": "哲学・心理学・宗教", "2": "歴史・地理", "3": "社会科学",
+    "4": "自然科学", "5": "工学・工業", "6": "産業", "7": "芸術・生活", "8": "語学", "9": "文学",
+}
+C_CODE_CONTENTS = {
+    "00": "総記", "01": "百科事典", "02": "年鑑・雑誌", "04": "情報科学",
+    "10": "哲学", "11": "心理（学）", "12": "倫理（学）", "14": "宗教", "15": "仏教", "16": "キリスト教",
+    "20": "歴史総記", "21": "日本歴史", "22": "外国歴史", "23": "伝記・系譜", "25": "地理", "26": "旅行",
+    "30": "社会科学総記", "31": "政治（国防・軍事含む）", "32": "法律", "33": "経済・財政・統計",
+    "34": "経営", "36": "社会", "37": "教育", "39": "民族・風習",
+    "40": "自然科学総記", "41": "数学", "42": "物理学", "43": "化学", "44": "天文・地学", "45": "生物学", "47": "医学・歯学・薬学",
+    "50": "工学・工業総記", "51": "土木", "52": "建築", "53": "機械", "54": "電気", "55": "電子通信",
+    "56": "海事・兵器", "57": "採鉱・冶金", "58": "各種工業",
+    "60": "産業総記", "61": "農林業", "62": "水産業", "63": "商業", "65": "交通・通信",
+    "70": "芸術総記", "71": "絵画・彫刻", "72": "写真・工芸", "73": "音楽・舞踊", "74": "演劇・映画",
+    "75": "体育・スポーツ", "76": "諸芸・娯楽", "77": "家事", "78": "生活", "79": "コミックス・劇画",
+    "80": "語学総記", "81": "日本語", "82": "英米語", "84": "ドイツ語", "85": "フランス語", "87": "各国語",
+    "90": "文学総記", "91": "日本文学総記", "92": "日本文学・詩歌", "93": "日本文学・小説・物語",
+    "95": "日本文学・評論・随筆その他", "97": "外国文学・小説", "98": "外国文学・その他",
+}
+
+
+def normalize_isbn(value: str) -> str:
+    """Validate ISBN-10/13 and return ISBN-13 for API lookup/storage."""
+    text = re.sub(r"(?i)^ISBN(?:-1[03])?\s*:?\s*", "", str(value).strip())
+    digits = re.sub(r"[\s-]", "", text).upper()
+    if len(digits) == 10 and re.fullmatch(r"[0-9]{9}[0-9X]", digits):
+        check = 10 if digits[-1] == "X" else int(digits[-1])
+        if (sum((10 - index) * int(digit) for index, digit in enumerate(digits[:9])) + check) % 11:
+            raise ValueError("ISBN-10のチェック数字が正しくありません。")
+        core = "978" + digits[:9]
+        check13 = (10 - sum(int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(core)) % 10) % 10
+        return core + str(check13)
+    if len(digits) != 13 or not digits.isascii() or not digits.isdigit():
+        raise ValueError("ISBNは10桁または13桁の数字で入力してください。")
+    if not digits.startswith(("978", "979")):
+        raise ValueError("ISBN-13は978または979で始まる必要があります。")
+    expected = (10 - sum(int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(digits[:12])) % 10) % 10
+    if expected != int(digits[-1]):
+        raise ValueError("ISBN-13のチェック数字が正しくありません。")
+    return digits
+
+
+def analyze_isbn_digits(isbn: str) -> dict[str, Any]:
+    normalized = normalize_isbn(isbn)
+    group_length = 1 if normalized.startswith(("9780", "9781", "9782", "9783", "9784", "9785", "9787", "9798")) else 0
+    group = normalized[3] if group_length else None
+    group_labels = {"0": "英語圏", "1": "英語圏", "2": "フランス語圏", "3": "ドイツ語圏", "4": "日本", "5": "ロシア語圏", "7": "中国語圏", "8": "英語圏"}
+    return {
+        "isbn": normalized, "prefix": normalized[:3], "registration_group": group,
+        "registration_group_label": group_labels.get(group),
+        "publisher_and_publication_digits": normalized[3 + group_length:-1] if group else None,
+        "check_digit": normalized[-1],
+    }
+
+
+def format_isbn_digit_analysis(analysis: dict[str, Any]) -> str:
+    parts = [f"接頭部 {analysis.get('prefix')}"]
+    if analysis.get("registration_group"):
+        parts.extend([
+            f"登録グループ {analysis['registration_group']}（{analysis['registration_group_label']}）",
+            f"出版者・書名記号 {analysis['publisher_and_publication_digits']}（区切りは可変）",
+        ])
+    else:
+        parts.append("登録グループ・出版者記号の境界は特定できません")
+    parts.append(f"チェック数字 {analysis.get('check_digit')}")
+    return " / ".join(parts)
+
+
+def classify_ccode(ccode: str) -> dict[str, Any]:
+    """Decode the four digits of a Japanese C-code using the supplied table."""
+    code = re.sub(r"\s+", "", str(ccode)).upper()
+    if code.startswith("C"):
+        code = code[1:]
+    if not re.fullmatch(r"\d{4}", code):
+        raise ValueError("Cコードは4桁の数字で指定してください。")
+    content_code = code[2:]
+    return {
+        "ccode": code, "audience_code": code[0], "audience_label": C_CODE_AUDIENCES.get(code[0]),
+        "format_code": code[1], "format_label": C_CODE_FORMATS.get(code[1]),
+        "major_code": code[2], "major_label": C_CODE_MAIN_CATEGORIES.get(code[2]),
+        "content_code": content_code, "content_label": C_CODE_CONTENTS.get(content_code),
+        "minor_code": code[3], "is_reserved_content_code": content_code not in C_CODE_CONTENTS,
+    }
+
+
+def format_book_classification(classification: dict[str, Any] | None) -> str:
+    if not classification:
+        return ""
+    parts = []
+    for digit, code_key, label_key in (
+        ("1桁目 販売対象", "audience_code", "audience_label"),
+        ("2桁目 発行形態", "format_code", "format_label"),
+        ("3桁目 大分類", "major_code", "major_label"),
+        ("4桁目 中分類", "minor_code", "content_label"),
+    ):
+        code, label = classification.get(code_key), classification.get(label_key)
+        if code is not None:
+            parts.append(f"{digit}: {label or '不明'}（{code}）")
+    if not classification.get("content_label") and classification.get("content_code"):
+        parts.append("表の未定義・予約コード" if classification.get("is_reserved_content_code") else f"内容コード {classification['content_code']}")
+    for key, label in (("ccode", "Cコード"), ("genre_code", "openBDジャンルコード"),
+                       ("trc_genre_code", "TRCジャンルコード"), ("ndc_code", "NDC")):
+        if classification.get(key):
+            parts.append(f"{label} {classification[key]}")
+    parts.extend(classification.get("subject_headings") or [])
+    return " / ".join(parts)
+
+
+def search_openlibrary_cover(isbn: str) -> str | None:
+    """Return a cover URL only when Open Library reports a thumbnail for the ISBN."""
+    query = urlencode({"bibkeys": f"ISBN:{isbn}", "jscmd": "data", "format": "json"})
+    request = Request(
+        f"https://openlibrary.org/api/books?{query}",
+        headers={"User-Agent": "ContentRecordApp/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    book = payload.get(f"ISBN:{isbn}") if isinstance(payload, dict) else None
+    cover = book.get("thumbnail_url") if isinstance(book, dict) else None
+    return str(cover) if cover else None
+
+
+def search_openbd_book(isbn_value: str) -> dict[str, Any]:
+    isbn = normalize_isbn(isbn_value)
+    request = Request(
+        f"https://api.openbd.jp/v1/get?{urlencode({'isbn': isbn})}",
+        headers={"User-Agent": "ContentRecordApp/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("openBD APIに接続できませんでした。時間をおいて再試行してください。") from exc
+    item = payload[0] if isinstance(payload, list) and payload else None
+    if not isinstance(item, dict):
+        fallback_cover = search_openlibrary_cover(isbn)
+        if fallback_cover:
+            return {
+                "isbn": isbn, "title": None, "author": None, "publisher": None,
+                "cover": fallback_cover, "pages": None, "classification": {},
+                "isbn_analysis": analyze_isbn_digits(isbn), "suggested_category": "book",
+                "cover_source": "Open Library",
+            }
+        raise ValueError("このISBNの書誌情報はopenBDに見つかりませんでした。")
+
+    onix = item.get("onix") or {}
+    detail = onix.get("DescriptiveDetail") or {}
+    publishing = onix.get("PublishingDetail") or {}
+    summary = item.get("summary") or {}
+    hanmoto = item.get("hanmoto") or {}
+    title_element = ((detail.get("TitleDetail") or {}).get("TitleElement") or {})
+    title = summary.get("title") or ((title_element.get("TitleText") or {}).get("content"))
+    contributors = detail.get("Contributor") or []
+    authors = [((contributor.get("PersonName") or {}).get("content")) for contributor in contributors if isinstance(contributor, dict)]
+    author = summary.get("author") or "、".join(name for name in authors if name) or None
+
+    ccode = genre_code = None
+    headings = []
+    for subject in detail.get("Subject") or []:
+        if not isinstance(subject, dict):
+            continue
+        scheme = str(subject.get("SubjectSchemeIdentifier", ""))
+        code = str(subject.get("SubjectCode", "")).strip()
+        if subject.get("SubjectHeadingText"):
+            headings.append(str(subject["SubjectHeadingText"]))
+        if scheme == "78":
+            ccode = code or None
+        elif scheme == "79":
+            genre_code = code or None
+    try:
+        classification = classify_ccode(ccode) if ccode else {}
+    except ValueError:
+        classification = {"ccode": ccode}
+    classification.update({
+        "genre_code": genre_code,
+        "trc_genre_code": str(hanmoto.get("genrecodetrc")) if hanmoto.get("genrecodetrc") else None,
+        "ndc_code": str(hanmoto.get("ndccode")).strip() if hanmoto.get("ndccode") else None,
+        "subject_headings": headings,
+    })
+    pages = None
+    for item_extent in detail.get("Extent") or []:
+        if isinstance(item_extent, dict) and item_extent.get("ExtentType") == "11":
+            try:
+                pages = int(item_extent.get("ExtentValue"))
+            except (TypeError, ValueError):
+                pass
+            break
+    imprint = ((publishing.get("Imprint") or {}).get("ImprintName"))
+    publisher_info = ((publishing.get("Publisher") or {}).get("PublisherName"))
+    cover = summary.get("cover") or search_openlibrary_cover(isbn)
+    return {
+        "isbn": isbn, "title": title, "author": author,
+        "publisher": summary.get("publisher") or imprint or publisher_info,
+        "cover": cover, "cover_source": "openBD" if summary.get("cover") else "Open Library" if cover else None,
+        "pages": pages,
+        "classification": classification, "isbn_analysis": analyze_isbn_digits(isbn),
+        "suggested_category": "manga" if classification.get("format_code") == "9" else "book",
+    }
+
+# Used to initialize the companion JSON data file on the first run.
+SAMPLE_RECORDS = [
+    {
+        "id": "sample-book-001",
+        "category": "book",
+        "title": "海辺の記録",
+        "creator": "山田",
+        "completed_at": "2026-10-13",
+        "rating": 4,
+        "review": "静かな余韻が残る一冊。",
+        "metrics": {"pages": 320},
+        "publisher": "青空出版",
+        "magazine": None,
+        "studio": None,
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-13T20:00:00+09:00",
+        "updated_at": "2026-10-13T20:00:00+09:00",
+    },
+    {
+        "id": "sample-manga-001",
+        "category": "manga",
+        "title": "星を渡る人 1",
+        "creator": "佐藤",
+        "completed_at": "2026-10-14",
+        "rating": 5,
+        "review": "続きが気になる。",
+        "metrics": {"volumes": 1, "pages": 192},
+        "publisher": "月刊書房",
+        "magazine": "月刊コミック星",
+        "studio": None,
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-14T18:30:00+09:00",
+        "updated_at": "2026-10-14T18:30:00+09:00",
+    },
+    {
+        "id": "sample-anime-001",
+        "category": "anime",
+        "title": "青い彗星",
+        "creator": "田中",
+        "completed_at": "2026-10-15",
+        "rating": 4,
+        "review": None,
+        "metrics": {"episodes": 28, "minutes_per_episode": 24},
+        "publisher": None,
+        "magazine": None,
+        "studio": "スタジオ北風",
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-15T21:00:00+09:00",
+        "updated_at": "2026-10-15T21:00:00+09:00",
+    },
+    {
+        "id": "sample-movie-001",
+        "category": "movie",
+        "title": "夜明けの街",
+        "creator": "鈴木",
+        "completed_at": "2026-10-16",
+        "rating": 3,
+        "review": "映像が印象的だった。",
+        "metrics": {"duration_minutes": 124},
+        "publisher": None,
+        "magazine": None,
+        "studio": "シネマ工房",
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-16T19:45:00+09:00",
+        "updated_at": "2026-10-16T19:45:00+09:00",
+    },
+    {
+        "id": "sample-drama-001",
+        "category": "drama",
+        "title": "午後の約束",
+        "creator": "高橋",
+        "completed_at": "2026-10-16",
+        "rating": 4,
+        "review": None,
+        "metrics": {"episodes": 10, "minutes_per_episode": 45},
+        "publisher": None,
+        "magazine": None,
+        "studio": "灯映像",
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-16T22:15:00+09:00",
+        "updated_at": "2026-10-16T22:15:00+09:00",
+    },
+    {
+        "id": "sample-other-001",
+        "category": "other",
+        "title": "写真展「交差点」",
+        "creator": "小林",
+        "completed_at": "2026-10-17",
+        "rating": None,
+        "review": "週末に訪れた展示。",
+        "metrics": {},
+        "publisher": None,
+        "magazine": None,
+        "studio": None,
+        "tag_ids": [],
+        "isbn": None,
+        "image": {"type": "none", "value": None},
+        "created_at": "2026-10-17T15:00:00+09:00",
+        "updated_at": "2026-10-17T15:00:00+09:00",
+    },
+]
+
+
+def _ensure_data_file() -> None:
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not DATA_FILE.exists():
+        DATA_FILE.write_text(
+            json.dumps(SAMPLE_RECORDS, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
+def load_records() -> list[dict[str, Any]]:
+    _ensure_data_file()
+    with DATA_FILE.open("r", encoding="utf-8") as file:
+        records = json.load(file)
+    if not isinstance(records, list):
+        raise ValueError("記録データの形式が正しくありません。")
+    return records
+
+
+def get_record(record_id: str) -> dict[str, Any] | None:
+    return next((record for record in load_records() if record.get("id") == record_id), None)
+
+
+def _validate_record(record: dict[str, Any]) -> None:
+    title = record.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("タイトルを入力してください。")
+
+    category = record.get("category")
+    if not isinstance(category, str) or category not in CATEGORY_LABELS:
+        raise ValueError("カテゴリを選択してください。")
+
+    completed_at = record.get("completed_at")
+    try:
+        if isinstance(completed_at, datetime):
+            completed_date = completed_at.date()
+        elif isinstance(completed_at, date):
+            completed_date = completed_at
+        else:
+            completed_date = date.fromisoformat(str(completed_at))
+    except (TypeError, ValueError):
+        raise ValueError("完了日を入力してください。") from None
+    if completed_date > datetime.now(JST).date():
+        raise ValueError("完了日に未来の日付は指定できません。")
+
+    metrics = record.get("metrics", {})
+    if not isinstance(metrics, dict):
+        raise ValueError("量の入力形式が正しくありません。")
+    if set(metrics) - ALLOWED_METRICS[category]:
+        raise ValueError("このカテゴリでは入力できない量が含まれています。")
+    for value in metrics.values():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError("量は1以上の数値を入力してください。")
+    if category == "manga" and not any(metrics.get(key) is not None for key in ("pages", "volumes")):
+        raise ValueError("漫画はページ数または巻数のどちらかを入力してください。")
+
+
+def add_record(record: dict[str, Any]) -> str:
+    if not isinstance(record, dict):
+        raise ValueError("記録データの形式が正しくありません。")
+    _validate_record(record)
+    records = load_records()
+    saved_record = deepcopy(record)
+    record_id = str(uuid4())
+    now = datetime.now(JST).isoformat(timespec="seconds")
+    saved_record.update({"id": record_id, "created_at": now, "updated_at": now})
+    records.append(saved_record)
+    DATA_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return record_id
+
+
+def delete_record(record_id: str) -> bool:
+    records = load_records()
+    remaining = [record for record in records if record.get("id") != record_id]
+    if len(remaining) == len(records):
+        return False
+    DATA_FILE.write_text(json.dumps(remaining, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
+def format_metrics(record: dict[str, Any]) -> str:
+    metrics = record.get("metrics") or {}
+    category = record.get("category")
+    pages = metrics.get("pages")
+    volumes = metrics.get("volumes")
+
+    if category == "book":
+        return f"{pages}ページ" if pages else ""
+    if category == "manga":
+        parts = []
+        if volumes:
+            parts.append(f"{volumes}巻")
+        if pages:
+            parts.append(f"{pages}ページ")
+        return "/".join(parts)
+    if category == "movie":
+        duration = metrics.get("duration_minutes")
+        return f"{duration}分" if duration else ""
+    if category in {"anime", "drama"}:
+        episodes = metrics.get("episodes")
+        minutes = metrics.get("minutes_per_episode")
+        if episodes and minutes:
+            return f"{episodes}話×{minutes}分"
+        return f"{episodes}話" if episodes else ""
+    return ""
+
+
+def render_cover(record: dict[str, Any], width: int = 120) -> None:
+    image_info = record.get("image") or {}
+    image_type = image_info.get("type")
+    image_value = image_info.get("value")
+    if image_type in {"url", "upload"} and image_value:
+        try:
+            st.image(image_value, width=width)
+            return
+        except (OSError, RuntimeError, TypeError, ValueError):
+            pass
+    icon = CATEGORY_ICONS.get(record.get("category"), CATEGORY_ICONS["other"])
+    st.markdown(f"## {icon}")
+
+
+def render_record_card(record: dict[str, Any]) -> None:
+    with st.container(border=True):
+        cover_col, detail_col = st.columns([1, 3])
+        with cover_col:
+            render_cover(record)
+        with detail_col:
+            st.subheader(record.get("title") or "（タイトルなし）")
+            category = record.get("category", "other")
+            st.caption(CATEGORY_LABELS.get(category, "その他"))
+            if record.get("creator"):
+                st.write(f"作者・監督など: {record['creator']}")
+            if record.get("isbn"):
+                st.caption(f"ISBN: {record['isbn']}")
+                if record.get("isbn_analysis"):
+                    st.caption(format_isbn_digit_analysis(record["isbn_analysis"]))
+                classification = format_book_classification(record.get("book_classification"))
+                if classification:
+                    st.write(f"分類: {classification}")
+            if record.get("completed_at"):
+                st.write(f"完了日: {record['completed_at']}")
+            rating = record.get("rating")
+            if isinstance(rating, int) and 1 <= rating <= 5:
+                st.write("★" * rating + "☆" * (5 - rating))
+            metric_text = format_metrics(record)
+            if metric_text:
+                st.write(metric_text)
+
+
+def render_add_page() -> None:
+    input_keys = (
+        "add_isbn", "add_category", "add_title", "add_creator", "add_completed_at", "add_rating",
+        "add_review", "add_publisher", "add_magazine", "add_studio", "add_pages",
+        "add_volumes", "add_duration", "add_episodes", "add_anime_minutes", "add_drama_minutes",
+    )
+    if st.session_state.pop("_reset_add_form", False):
+        for key in input_keys:
+            st.session_state.pop(key, None)
+        st.session_state.pop("_openbd_search_result", None)
+        st.session_state.pop("_openbd_search_error", None)
+    success_message = st.session_state.pop("_add_success_message", None)
+
+    st.title("記録を追加")
+    if success_message:
+        st.success(success_message)
+
+    isbn_input = st.text_input("ISBN（任意）", key="add_isbn", placeholder="例: 978-4-...")
+    if st.button("openBDでISBN検索"):
+        st.session_state.pop("_openbd_search_result", None)
+        st.session_state.pop("_openbd_search_error", None)
+        try:
+            found_book = search_openbd_book(isbn_input)
+            st.session_state["_openbd_search_result"] = found_book
+            st.session_state["add_category"] = found_book["suggested_category"]
+            st.session_state["add_title"] = found_book.get("title") or ""
+            st.session_state["add_creator"] = found_book.get("author") or ""
+            st.session_state["add_publisher"] = found_book.get("publisher") or ""
+            st.session_state["add_pages"] = found_book.get("pages") or 0
+        except ValueError as exc:
+            st.session_state["_openbd_search_error"] = str(exc)
+        st.rerun()
+
+    openbd_error = st.session_state.get("_openbd_search_error")
+    if openbd_error:
+        st.error(openbd_error)
+    openbd_result = st.session_state.get("_openbd_search_result")
+    matched_openbd_result = None
+    if openbd_result:
+        try:
+            if normalize_isbn(isbn_input) == openbd_result.get("isbn"):
+                matched_openbd_result = openbd_result
+        except ValueError:
+            pass
+    if matched_openbd_result:
+        if matched_openbd_result.get("title"):
+            st.success("書誌情報を取得しました。入力欄に反映済みです。内容を確認して保存してください。")
+        else:
+            st.success("書誌情報は見つかりませんでしたが、ISBNに対応する書影を取得しました。タイトルは入力してください。")
+        st.caption(f"ISBNの桁構成: {format_isbn_digit_analysis(matched_openbd_result['isbn_analysis'])}")
+        classification_text = format_book_classification(matched_openbd_result.get("classification"))
+        if classification_text:
+            st.caption(f"本の分類: {classification_text}")
+        else:
+            st.caption("openBDに分類情報がないため、ISBNから本のジャンルは判定できませんでした。")
+        if matched_openbd_result.get("cover"):
+            st.image(matched_openbd_result["cover"], width=100)
+            if matched_openbd_result.get("cover_source"):
+                st.caption(f"書影取得元: {matched_openbd_result['cover_source']}")
+
+    category = st.selectbox(
+        "カテゴリ",
+        options=list(CATEGORY_LABELS),
+        format_func=lambda value: CATEGORY_LABELS[value],
+        key="add_category",
+    )
+    with st.form("add_record_form"):
+        title = st.text_input("タイトル *", key="add_title")
+        creator = st.text_input("作者・監督など", key="add_creator")
+        completed_at = st.date_input("完了日 *", value=datetime.now(JST).date(), key="add_completed_at")
+        rating = st.selectbox(
+            "評価", options=[None, 1, 2, 3, 4, 5],
+            format_func=lambda value: "未評価" if value is None else str(value), key="add_rating",
+        )
+        review = st.text_area("感想", key="add_review")
+
+        publisher = None
+        magazine = None
+        studio = None
+        if category in {"book", "manga"}:
+            publisher = st.text_input("出版社", key="add_publisher")
+        if category == "manga":
+            magazine = st.text_input("掲載誌", key="add_magazine")
+        if category in {"movie", "anime", "drama"}:
+            studio = st.text_input("制作会社", key="add_studio")
+
+        metrics: dict[str, int] = {}
+        if category == "book":
+            pages = st.number_input("ページ数", min_value=0, value=0, step=1, key="add_pages")
+            if pages > 0:
+                metrics["pages"] = int(pages)
+        elif category == "manga":
+            pages = st.number_input("ページ数（任意）", min_value=0, value=0, step=1, key="add_pages")
+            volumes = st.number_input("巻数（任意）", min_value=0, value=0, step=1, key="add_volumes")
+            if pages > 0:
+                metrics["pages"] = int(pages)
+            if volumes > 0:
+                metrics["volumes"] = int(volumes)
+        elif category == "movie":
+            duration = st.number_input("上映時間（分）", min_value=0, value=0, step=1, key="add_duration")
+            if duration > 0:
+                metrics["duration_minutes"] = int(duration)
+        elif category in {"anime", "drama"}:
+            episodes = st.number_input("話数", min_value=0, value=0, step=1, key="add_episodes")
+            default_minutes = 24 if category == "anime" else 45
+            minutes_key = "add_anime_minutes" if category == "anime" else "add_drama_minutes"
+            minutes = st.number_input(
+                "1話あたりの分数", min_value=1, value=default_minutes, step=1, key=minutes_key,
+            )
+            if episodes > 0:
+                metrics["episodes"] = int(episodes)
+                metrics["minutes_per_episode"] = int(minutes)
+
+        submitted = st.form_submit_button("保存")
+
+    if submitted:
+        try:
+            isbn = normalize_isbn(isbn_input) if isbn_input.strip() and category in {"book", "manga"} else None
+            selected_openbd_result = (
+                matched_openbd_result
+                if isbn and matched_openbd_result and matched_openbd_result.get("isbn") == isbn
+                else None
+            )
+            record = {
+                "category": category,
+                "title": title,
+                "creator": creator.strip() or None,
+                "completed_at": completed_at.isoformat(),
+                "rating": rating,
+                "review": review.strip() or None,
+                "metrics": metrics if category != "other" else {},
+                "publisher": publisher.strip() or None if publisher else None,
+                "magazine": magazine.strip() or None if magazine else None,
+                "studio": studio.strip() or None if studio else None,
+                "tag_ids": [],
+                "isbn": isbn,
+                "isbn_analysis": analyze_isbn_digits(isbn) if isbn else None,
+                "book_classification": selected_openbd_result.get("classification") if selected_openbd_result else None,
+                "image": {
+                    "type": "url" if selected_openbd_result and selected_openbd_result.get("cover") else "none",
+                    "value": selected_openbd_result.get("cover") if selected_openbd_result else None,
+                },
+            }
+            add_record(record)
+            st.session_state["_add_success_message"] = "記録を保存しました。"
+            st.session_state["_reset_add_form"] = True
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+
+
+def render_list_page() -> None:
+    st.title("記録一覧")
+    try:
+        records = sorted(load_records(), key=lambda record: record.get("completed_at") or "", reverse=True)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    st.caption(f"記録件数: {len(records)}件")
+    if not records:
+        st.info("まだ記録がありません。「記録を追加」から登録しましょう")
+        return
+
+    confirm_id = st.session_state.get("_confirm_delete_record_id")
+    for record in records:
+        record_id = str(record.get("id", ""))
+        render_record_card(record)
+        if confirm_id == record_id:
+            st.warning(f"「{record.get('title', 'この記録')}」を削除しますか？")
+            confirm_col, cancel_col, _ = st.columns([1, 1, 5])
+            with confirm_col:
+                if st.button("削除を確定", key=f"confirm_delete_{record_id}", type="primary"):
+                    try:
+                        delete_record(record_id)
+                        st.session_state.pop("_confirm_delete_record_id", None)
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+            with cancel_col:
+                if st.button("キャンセル", key=f"cancel_delete_{record_id}"):
+                    st.session_state.pop("_confirm_delete_record_id", None)
+                    st.rerun()
+        elif st.button("削除", key=f"delete_{record_id}"):
+            st.session_state["_confirm_delete_record_id"] = record_id
+            st.rerun()
+
+
+def main() -> None:
+    st.set_page_config(page_title="コンテンツ記録", page_icon="📚")
+    _ensure_data_file()
+    page = st.sidebar.radio("画面", ["ホーム", "記録を追加", "記録一覧"])
+    if page == "ホーム":
+        st.title("コンテンツ記録")
+        st.write("読んだ本や観た作品を記録できます。左のメニューから画面を選んでください。")
+        st.metric("記録件数", len(load_records()))
+    elif page == "記録を追加":
+        render_add_page()
+    else:
+        render_list_page()
+
+
+if __name__ == "__main__":
+    main()
+~~~~
