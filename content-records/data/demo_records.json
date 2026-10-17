@@ -1,0 +1,11 @@
+[
+  {"category":"book","title":"夜の図書館","recorded_on":"2026-10-16","metrics":{"pages":320,"total_pages":320},"review":"静かな夜に読みたい一冊。最後の場面が心に残った。"},
+  {"category":"movie","title":"旅のつづき","recorded_on":"2026-10-15","metrics":{"minutes":124},"review":"風景と音楽が印象的。旅に出たくなった。"},
+  {"category":"manga","title":"青い季節 1巻","recorded_on":"2026-10-13","metrics":{"pages":192,"total_pages":192,"volumes":1},"review":"何気ない会話が印象に残った。"},
+  {"category":"book","title":"海辺の手紙","recorded_on":"2026-10-08","metrics":{"pages":300,"total_pages":500},"review":"続きが気になる。"},
+  {"category":"book","title":"夜の図書館","recorded_on":"2026-10-02","metrics":{"pages":320,"total_pages":320},"review":"再読して、登場人物の言葉の印象が変わった。"},
+  {"category":"book","title":"小さな庭","recorded_on":"2026-09-24","metrics":{"pages":180,"total_pages":360},"review":"少しずつ読み進めている。"},
+  {"category":"anime","title":"空の向こう","recorded_on":"2026-09-20","metrics":{"episodes":24,"minutes_per_episode":24},"review":"最終話まで見た。"},
+  {"category":"drama","title":"街角の時間","recorded_on":"2026-09-15","metrics":{"episodes":6,"minutes_per_episode":45},"review":"日常の描き方が好き。"},
+  {"category":"other","title":"小劇場の夜","recorded_on":"2026-09-10","metrics":{},"review":"舞台の空気を残しておきたい。"}
+]
