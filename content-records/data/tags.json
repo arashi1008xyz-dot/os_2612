@@ -1,0 +1,174 @@
+[
+  {
+    "id": "t-001",
+    "name": "ミステリー",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-002",
+    "name": "SF",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-003",
+    "name": "ファンタジー",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-004",
+    "name": "恋愛",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-005",
+    "name": "ホラー",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-006",
+    "name": "アクション",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-007",
+    "name": "日常",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-008",
+    "name": "歴史",
+    "kind": "genre",
+    "categories": [
+      "all"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-009",
+    "name": "ノンフィクション",
+    "kind": "genre",
+    "categories": [
+      "book",
+      "movie",
+      "drama"
+    ],
+    "color": "#64B5F6",
+    "is_template": true
+  },
+  {
+    "id": "t-010",
+    "name": "ビジネス・自己啓発",
+    "kind": "genre",
+    "categories": [
+      "book"
+    ],
+    "color": "#A1887F",
+    "is_template": true
+  },
+  {
+    "id": "t-101",
+    "name": "泣ける",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-102",
+    "name": "笑える",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-103",
+    "name": "熱い",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-104",
+    "name": "癒される",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-105",
+    "name": "怖い",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-106",
+    "name": "考えさせられる",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  },
+  {
+    "id": "t-107",
+    "name": "ワクワクする",
+    "kind": "emotion",
+    "categories": [
+      "all"
+    ],
+    "color": "#E57373",
+    "is_template": true
+  }
+]
