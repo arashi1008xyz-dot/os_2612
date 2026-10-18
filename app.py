@@ -181,12 +181,16 @@ def entry():
                     st.info("取得できませんでした。そのまま手入力できます。")
             result = st.session_state.get("isbn_result")
             if result:
-                st.write(result.get("title") or "タイトル未取得")
+                pages = (result.get("metrics") or {}).get("pages")
+                st.write((result.get("title") or "タイトル未取得") + (f"（{pages:,}ページ）" if pages else ""))
                 if st.button("空欄に反映", key=key("apply_isbn")):
                     for field in ("title", "creator", "publisher"):
                         if not draft.get(field) and result.get(field):
                             draft[field] = result[field]
                             st.session_state[key(field)] = result[field]
+                    if pages and not metrics.get("total_pages"):
+                        metrics["total_pages"] = pages
+                        st.session_state[key(f"{category}_total")] = pages
                     if draft.get("image", {}).get("type", "none") == "none" and result.get("image_url"):
                         draft["image"] = {"type": "url", "value": result["image_url"]}
                     st.session_state.pop("isbn_result", None)
@@ -279,11 +283,10 @@ def entry():
 def video_lookup(draft, category, metrics, key):
     """作品名からTMDB／Annictで検索し、空欄と初期値のままの数量欄だけを埋める。"""
     with st.expander("作品名から入力（任意）"):
-        missing = external_api.missing_video_keys(category)
-        if missing:
-            st.caption(f"検索には .streamlit/secrets.toml に {' または '.join(missing)} の設定が必要です。手入力はそのままできます。")
-        query = st.text_input("作品名", value=draft.get("title", ""), key=key("video_query"))
-        if st.button("作品を検索", key=key("video_search")):
+        # Enterでも検索する（ボタンだけだと、Enterで検索したつもりになりやすい）。
+        query = st.text_input("作品名", value=draft.get("title", ""), key=key("video_query"),
+                              on_change=st.session_state.update, kwargs={"video_search_requested": True})
+        if st.button("作品を検索", key=key("video_search")) or st.session_state.pop("video_search_requested", False):
             with st.spinner("作品を検索しています…"):
                 results = external_api.search_video(query, category)
             st.session_state["video_results"] = {"category": category, "items": results or []}

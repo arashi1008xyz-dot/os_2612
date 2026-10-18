@@ -101,23 +101,67 @@ CONTENT_RECORDS_DATA_DIR=~/content-test-data .venv/bin/python -m streamlit run a
 ### スマホ（デモを PC で行うなら後回しでよい）
 PC と同じ Wi-Fi につないだスマホのブラウザから `http://<PC の IP>:8501` で開く。必要な設定は、アプリを WSL で動かすか Windows で直接動かすかで変わる。
 
-#### WSL で動かす場合（自分の環境）
-アプリが WSL の中で動いているため、Windows 側で「8501 番への接続を WSL に渡す」設定が要る。
+#### WSL で動かす場合（自分の環境）— 手順を上から順に行う
+アプリが WSL の中で動いているため、Windows 側で「8501 番への接続を WSL に渡す」設定が要る。担当: 自分（2026-10-18 決定。PC の残りの項目は他のメンバーが行う）。
 
-1. WSL でいつもどおり起動する（`CONTENT_RECORDS_DATA_DIR=~/content-test-data .venv/bin/python -m streamlit run app.py`）
-2. WSL の IP を調べる: WSL のターミナルで `hostname -I`（最初の値。例 `172.20.x.x`。PC を再起動すると変わる）
-3. Windows の PowerShell を**管理者として**開き、次の 2 つを実行する（`<WSLのIP>` は 2 の値）
-   ```
-   netsh interface portproxy add v4tov4 listenport=8501 listenaddress=0.0.0.0 connectport=8501 connectaddress=<WSLのIP>
-   New-NetFirewallRule -DisplayName "Streamlit 8501" -Direction Inbound -LocalPort 8501 -Protocol TCP -Action Allow
-   ```
-4. Windows の IP を調べる: PowerShell で `ipconfig` →「Wireless LAN adapter Wi-Fi」の IPv4 アドレス（例 `192.168.1.23`）
-5. スマホを PC と同じ Wi-Fi につなぎ、ブラウザで `http://<WindowsのIP>:8501` を開く
-6. 終わったら、管理者の PowerShell で設定を戻す
-   ```
-   netsh interface portproxy delete v4tov4 listenport=8501 listenaddress=0.0.0.0
-   Remove-NetFirewallRule -DisplayName "Streamlit 8501"
-   ```
+**ステップ 1. アプリを起動する**（WSL のターミナル）
+```
+cd /home/komakoma243/projects/os_2612
+git switch feature/city-integration
+git pull
+rm -rf ~/content-test-data && mkdir -p ~/content-test-data && cp data/tags.json ~/content-test-data/
+CONTENT_RECORDS_DATA_DIR=~/content-test-data .venv/bin/python -m streamlit run app.py
+```
+このターミナルは開いたままにする（閉じるとアプリが止まる）。
+
+**ステップ 2. WSL の IP を調べる**（もう 1 つ WSL のターミナルを開く）
+```
+hostname -I
+```
+最初に出る値（例 `172.20.x.x`）を控える。PC を再起動すると変わるので、そのときはステップ 3 の 1 行目からやり直す。
+
+**ステップ 3. スマホからの接続を WSL に渡す**（Windows の PowerShell を**管理者として**開く）
+`<WSLのIP>` はステップ 2 の値に置き換える。
+```
+netsh interface portproxy add v4tov4 listenport=8501 listenaddress=0.0.0.0 connectport=8501 connectaddress=<WSLのIP>
+New-NetFirewallRule -DisplayName "Streamlit 8501" -Direction Inbound -LocalPort 8501 -Protocol TCP -Action Allow
+```
+
+**ステップ 4. Windows の IP を調べる**（同じ PowerShell）
+```
+ipconfig
+```
+「Wireless LAN adapter Wi-Fi」の欄の **IPv4 アドレス**（例 `192.168.1.23`、`172.20.10.2` など）を控える。**172 で始まっていても、この欄のものなら使ってよい**（学校・会場の Wi-Fi やテザリングでは 172 になることがある）。使わないのは `vEthernet (WSL ...)` などの欄の番号と、ステップ 2 の WSL の IP と同じ番号。
+
+172.29.0.87
+
+**ステップ 5. スマホで開く**
+1. スマホを PC と同じ Wi-Fi につなぐ
+2. スマホのブラウザで `http://<WindowsのIP>:8501` を開く（例 `http://192.168.1.23:8501`）
+3. ホームの「サンプルで画面を確認する」→「サンプル記録を読み込む」で 9 件を入れる
+
+開けないとき:
+- ステップ 4 で「Wireless LAN adapter Wi-Fi」の欄の番号を使っているか（`vEthernet` の欄や、ステップ 2 の WSL の IP と同じ番号は違う）
+- スマホの Wi-Fi の詳細で見たスマホの IP と、PC の IP の最初の 3 つの数字が同じか（違えば別のネットワークにいる）
+- PC を再起動して WSL の IP が変わっていないか（変わっていたら `netsh interface portproxy delete v4tov4 listenport=8501 listenaddress=0.0.0.0` で消してから、ステップ 3 の 1 行目をやり直す）
+- PC のブラウザで `http://<WindowsのIP>:8501` が開けるか（開けなければステップ 3 の設定の問題、開ければ Wi-Fi の問題）
+- Wi-Fi が端末どうしの通信を禁止していないか（公共・会場の Wi-Fi に多い）。PC をスマホのテザリングにつなぎ、テザリング側の IPv4 アドレスで試す
+
+2026-10-18 に試して分かったこと（結局つながらず、スマホの確認は見送り）:
+- ブラウザの URL 欄に入れたアドレスが「検索」されるときは、全角の文字（`：` など）が混ざっているか、`http://` が抜けている。日本語入力をオフにし、半角で `http://` から入力する
+- iPhone の Chrome は「設定」→「Chrome」→「ローカルネットワーク」がオフだと PC に届かない（Safari なら不要）
+- 大学・会場の Wi-Fi（`172.29.x.x` など）は端末どうしの通信を禁止していることが多い
+- iPhone のテザリングでも、Safari で「しばらく読み込んでタイムアウト」になった。Windows のファイアウォールの規則は有効で、パブリックのファイアウォールを一時的に切っても同じだったため、ファイアウォール以外（ウイルス対策ソフトやテザリング側）が原因と考えられる。原因は未特定
+- 見た目だけなら、PC の Chrome で F12 →「デバイスのツールバー」（`Ctrl + Shift + M`）で iPhone の幅にして確かめられる
+
+**ステップ 6. テスト項目を行う**（下の「スマホのテスト項目」）
+
+**ステップ 7. 後片付け**（管理者の PowerShell）
+```
+netsh interface portproxy delete v4tov4 listenport=8501 listenaddress=0.0.0.0
+Remove-NetFirewallRule -DisplayName "Streamlit 8501"
+```
+WSL のアプリはターミナルで `Ctrl + C` で止める。結果（だめだった項目は番号・どうなったか・スクリーンショット）を Claude に伝えると、2 つのファイルに記入する。
 
 #### Windows で直接動かす場合（他のメンバーの環境）
 WSL への受け渡しは不要。Windows のファイアウォールと、Wi-Fi の「ネットワークの種類」だけ確かめる。
@@ -130,7 +174,7 @@ WSL への受け渡しは不要。Windows のファイアウォールと、Wi-Fi
    ```
 2. 初回の起動で「Windows セキュリティの重要な警告」（python.exe の通信の許可）が出たら、**プライベート ネットワーク**にチェックを入れて「アクセスを許可する」
 3. Wi-Fi の種類を「プライベート」にする: 設定 → ネットワークとインターネット → Wi-Fi → つないでいる Wi-Fi のプロパティ →「ネットワーク プロファイルの種類」を**プライベート**（パブリックのままだと、2 で許可しても外から届かない）
-4. 起動時にターミナルに出る `Network URL: http://192.168.x.x:8501` を、スマホのブラウザで開く。開けなければ、`ipconfig` の「Wireless LAN adapter Wi-Fi」の IPv4 アドレスを使う（`172.x.x.x` などは WSL や Hyper-V の仮想ネットワークの番号なので使わない）
+4. 起動時にターミナルに出る `Network URL: http://192.168.x.x:8501` を、スマホのブラウザで開く。開けなければ、`ipconfig` の「Wireless LAN adapter Wi-Fi」の IPv4 アドレスを使う（`vEthernet (WSL ...)` などの欄の番号は仮想ネットワークのものなので使わない。Wi-Fi の欄なら 172 で始まっていても使ってよい）
 5. 2 の警告を閉じてしまった・出なかったときは、PowerShell を**管理者として**開いて、8501 番を許可する
    ```
    New-NetFirewallRule -DisplayName "Streamlit 8501" -Direction Inbound -LocalPort 8501 -Protocol TCP -Action Allow -Profile Private
@@ -140,10 +184,12 @@ WSL への受け渡しは不要。Windows のファイアウォールと、Wi-Fi
 つながらないとき: Wi-Fi が「端末どうしの通信を禁止」していることがある（公共・会場の Wi-Fi に多い）。その場合はスマホのテザリングに PC をつなぐと試せる。
 見た目だけなら、PC の Chrome で F12 →「デバイスのツールバー」（スマホの絵のボタン）で iPhone などの幅に切り替えても確かめられる（I-2 の目安。キーボード・カメラは実機が必要）。
 
-- [ ] I-2: 下部のナビ（ホーム・記録・集計・検索・街）が画面下に固定され、最後の記録がナビに隠れない
-- [ ] P-9: 5 項目のナビが画面の幅に収まり、どれも押せる（特に一番右の「街」）。「街」の画面の絵と累計が崩れない
-- [ ] I-3: キーボードを出したまま「保存」ボタンが押せる
-- [ ] I-4: スマホのカメラで表紙を撮影してアップロードできる
+#### スマホのテスト項目（ステップ 6）
+使った端末（機種・OS・ブラウザ。例: iPhone 15 / iOS 18 / Safari）をメモしておく。
+- [ ] I-2: ホームを一番下までスクロールする → 下部ナビ（ホーム・記録・集計・検索・街）が画面下に固定されたまま。最後の記録「小劇場の夜」の「詳細 ›」と、その下の「管理」がナビに隠れずに見えて押せる
+- [ ] P-9: 下部ナビの 5 つのボタンを順に押す → 5 つとも画面の幅に収まって押せる（特に右端の「街」）。「街」の画面で、街の絵・「累計 ○時間○分相当・○棟完成」・進捗バーが切れたり崩れたりしない
+- [ ] I-3: 「記録」→「タイトル」を押してキーボードを出し、題名を入れる → キーボードを出したまま下にスクロールし、「保存」を押せる。保存すると詳細画面が開く
+- [ ] I-4: 「記録」→「カバー画像」の「Browse files」→ カメラを選んで表紙を撮影 → タイトルを入れて保存 → 撮った写真のプレビューが出て、保存後にホームの記録に表紙が出る（「画像を読み込めません」と出たら、写真の形式〔iPhone の HEIC など〕が原因の可能性があるので、そのまま伝える）
 
 ---
 

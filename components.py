@@ -20,12 +20,13 @@ def apply_display_settings(settings):
 
     Streamlitには画面から全体の文字を切り替える機能がないため、ここだけCSSを使う（仕様の例外）。
     文字の大きさは基準（rem）を変えるので、見出しなども同じ比率で変わる。アイコンのフォントは変えない。
+    グラフ（SVG）の文字も変えない。グラフは既定のフォントで軸の幅を測るため、変えると軸の数字が切れる。
     """
     size = FONT_SIZES[settings["font_size"]][1]
     family = FONTS[settings["font"]][1]
     st.html(f"<style>@import url('{GOOGLE_FONTS}');"
             f"html {{ font-size: {size} !important; }}"
-            f".stApp, .stApp *:not([data-testid='stIconMaterial']) {{ font-family: {family} !important; }}</style>")
+            f".stApp, .stApp *:not([data-testid='stIconMaterial']):not(svg *) {{ font-family: {family} !important; }}</style>")
 
 
 def plain_markdown(text):

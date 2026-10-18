@@ -84,17 +84,19 @@ def _get_json(url, timeout, headers=None):
         return json.loads(response.read(MAX_RESPONSE_BYTES).decode("utf-8"))
 
 
-def _openlibrary_cover(isbn):
-    """openBDに表紙がないときの予備。Open Libraryに表紙があればそのURL、なければNone。"""
+def _openlibrary(isbn):
+    """openBDに無い表紙・ページ数の予備。Open Libraryの（表紙URL, ページ数）。取れない項目はNone。"""
     query = urlencode({"bibkeys": f"ISBN:{isbn}", "jscmd": "data", "format": "json"})
     try:
         book = _get_json(f"https://openlibrary.org/api/books?{query}", timeout=8).get(f"ISBN:{isbn}")
-        # jscmd=dataでは表紙はcover（small・medium・large）に入る。thumbnail_urlはjscmd=viewapiの項目。
-        cover = book.get("cover") if isinstance(book, dict) else None
-        url = (cover.get("medium") or cover.get("small")) if isinstance(cover, dict) else None
-        return str(url) if url else None
     except (ValueError, URLError, TimeoutError, OSError, AttributeError):
-        return None
+        return None, None
+    if not isinstance(book, dict):
+        return None, None
+    # jscmd=dataでは表紙はcover（small・medium・large）に入る。thumbnail_urlはjscmd=viewapiの項目。
+    cover = book.get("cover")
+    url = (cover.get("medium") or cover.get("small")) if isinstance(cover, dict) else None
+    return (str(url) if url else None), _positive(book.get("number_of_pages"))
 
 
 def _parse_openbd(item):
@@ -154,9 +156,12 @@ def lookup_isbn(value):
             book = {"title": None, "creator": None, "publisher": None, "image_url": None,
                     "metrics": {"pages": None}, "classification": None}
         image_source = "openBD" if book["image_url"] else None
-        if not book["image_url"]:
-            book["image_url"] = _openlibrary_cover(isbn)
-            image_source = "Open Library" if book["image_url"] else None
+        if not book["image_url"] or not book["metrics"]["pages"]:
+            # openBDはページ数が入っていないことが多いので、表紙と同じくOpen Libraryで補う。
+            cover, pages = _openlibrary(isbn)
+            if not book["image_url"] and cover:
+                book["image_url"], image_source = cover, "Open Library"
+            book["metrics"]["pages"] = book["metrics"]["pages"] or pages
         if not isinstance(item, dict) and not book["image_url"]:
             return None
         classification = book["classification"] or {}
