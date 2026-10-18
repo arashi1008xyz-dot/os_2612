@@ -3,6 +3,9 @@ __pycache__/
 data/images/
 data/*.lock
 data/*.tmp
+# 各自の記録と表示設定。ファイルがなければ空として起動する（サンプルは data/demo_records.json）
+data/records.json
+data/settings.json
 tests/.scratch/
 # APIキー。各自 .streamlit/secrets.toml.example をコピーして作る
 .streamlit/secrets.toml
