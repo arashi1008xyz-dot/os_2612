@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "minutes_per_unit": {
+    "book_pages": 2,
+    "manga_pages": 0.4,
+    "anime_minutes": 1,
+    "movie_minutes": 1,
+    "drama_minutes": 1
+  },
+  "minutes_per_building": 600,
+  "max_buildings": 120
+}
