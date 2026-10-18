@@ -12,6 +12,15 @@ from domain import CATEGORIES, PERIODS, record_date, today
 from icons import icon
 
 
+# 映像の数量欄の初期値。この値のままなら、作品検索の結果で上書きしてよい。
+VIDEO_DEFAULTS = {"movie": {"minutes": 120}, "anime": {"episodes": 1, "minutes_per_episode": 24},
+                  "drama": {"episodes": 1, "minutes_per_episode": 45}}
+VIDEO_CREDITS = {
+    "TMDB": "This product uses the TMDB API but is not endorsed or certified by TMDB. 作品情報: [TMDB](https://www.themoviedb.org/)",
+    "Annict": "作品情報: [Annict](https://annict.com/)",
+}
+
+
 def open_record(record_id):
     navigate("detail", selected_record=record_id, return_page=st.session_state.get("page", "home"))
 
@@ -19,6 +28,7 @@ def open_record(record_id):
 def start_entry(record=None, copy=False):
     st.session_state.pop("draft_upload", None)
     st.session_state.pop("isbn_result", None)
+    st.session_state.pop("video_results", None)
     draft = deepcopy(record or {"category": "book", "metrics": {}, "image": {"type": "none", "value": None}})
     if copy:
         draft = storage.copy_record_data(record["id"])
@@ -174,6 +184,8 @@ def entry():
                         draft["image"] = {"type": "url", "value": result["image_url"]}
                     st.session_state.pop("isbn_result", None)
                     st.rerun()
+    if category in VIDEO_DEFAULTS:
+        video_lookup(draft, category, metrics, key)
     uploaded = st.file_uploader("カバー画像（任意）", type=["jpg", "jpeg", "png", "webp"], key=key("upload"))
     if uploaded is not None:
         st.session_state["draft_upload"] = uploaded.getvalue()
@@ -199,11 +211,11 @@ def entry():
         if category == "manga":
             metrics["volumes"] = st.number_input("巻数（未入力可）", min_value=1, value=metrics.get("volumes"), step=1, key=key("volumes"))
     elif category == "movie":
-        metrics["minutes"] = st.number_input("上映時間（分）", min_value=1, value=metrics.get("minutes", 120), step=1, key=key("minutes"))
+        metrics["minutes"] = st.number_input("上映時間（分）", min_value=1, value=metrics.get("minutes", VIDEO_DEFAULTS["movie"]["minutes"]), step=1, key=key("minutes"))
     elif category in ("anime", "drama"):
-        metrics["episodes"] = st.number_input("話数", min_value=1, value=metrics.get("episodes", 1), step=1, key=key(f"{category}_episodes"))
+        metrics["episodes"] = st.number_input("話数", min_value=1, value=metrics.get("episodes", VIDEO_DEFAULTS[category]["episodes"]), step=1, key=key(f"{category}_episodes"))
         metrics["minutes_per_episode"] = st.number_input("1話あたりの分数", min_value=1,
-                                                        value=metrics.get("minutes_per_episode", 24 if category == "anime" else 45),
+                                                        value=metrics.get("minutes_per_episode", VIDEO_DEFAULTS[category]["minutes_per_episode"]),
                                                         step=1, key=key(f"{category}_minutes"))
     draft["review"] = st.text_area("感想（任意）", value=draft.get("review", ""), key=key("review"))
     for kind, label in (("genre", "ジャンル"), ("emotion", "感情")):
@@ -240,12 +252,56 @@ def entry():
         except (ValueError, OSError) as exc:
             st.error(str(exc))
         else:
-            for field in ("draft", "draft_token", "draft_metrics", "draft_tags", "draft_upload", "copy_image", "isbn_result"):
+            for field in ("draft", "draft_token", "draft_metrics", "draft_tags", "draft_upload", "copy_image", "isbn_result", "video_results"):
                 st.session_state.pop(field, None)
             navigate("detail", selected_record=saved, return_page="home")
             st.session_state["flash"] = "記録を保存しました。"
             st.rerun()
     st.button("キャンセル（下書きを保持）", width="stretch", on_click=navigate, args=("home",), key=key("cancel"))
+
+
+def video_lookup(draft, category, metrics, key):
+    """作品名からTMDB／Annictで検索し、空欄と初期値のままの数量欄だけを埋める。"""
+    with st.expander("作品名から入力（任意）"):
+        missing = external_api.missing_video_keys(category)
+        if missing:
+            st.caption(f"検索には .streamlit/secrets.toml に {' または '.join(missing)} の設定が必要です。手入力はそのままできます。")
+        query = st.text_input("作品名", value=draft.get("title", ""), key=key("video_query"))
+        if st.button("作品を検索", key=key("video_search")):
+            with st.spinner("作品を検索しています…"):
+                results = external_api.search_video(query, category)
+            st.session_state["video_results"] = {"category": category, "items": results or []}
+            if results is None:
+                st.info("検索できませんでした。キーの設定か通信を確認してください。そのまま手入力できます。")
+            elif not results:
+                st.info("見つかりませんでした。別の表記で検索するか、そのまま手入力できます。")
+        found = st.session_state.get("video_results")
+        if not found or found["category"] != category or not found["items"]:
+            return
+        items = found["items"]
+        def label(index):
+            year = str(items[index].get("release_date") or "")[:4]
+            return items[index]["title"] + (f"（{year}）" if year.isdigit() else "")
+        index = st.selectbox("検索結果", range(len(items)), format_func=label, key=key(f"video_pick_{category}"))
+        st.caption(VIDEO_CREDITS[items[index]["source"]])
+        if st.button("入力欄に反映", key=key("apply_video")):
+            with st.spinner("作品情報を取得しています…"):
+                result = external_api.video_details(items[index])
+            for field in ("title", "creator", "studio"):
+                if not draft.get(field) and result.get(field):
+                    draft[field] = result[field]
+                    st.session_state[key(field)] = result[field]
+            widget_keys = {"minutes": "minutes", "episodes": f"{category}_episodes",
+                           "minutes_per_episode": f"{category}_minutes"}
+            for name, default in VIDEO_DEFAULTS[category].items():
+                value = result["metrics"].get(name)
+                if value and metrics.get(name, default) == default:
+                    metrics[name] = value
+                    st.session_state[key(widget_keys[name])] = value
+            if draft.get("image", {}).get("type", "none") == "none" and result.get("image_url"):
+                draft["image"] = {"type": "url", "value": result["image_url"]}
+            st.session_state.pop("video_results", None)
+            st.rerun()
 
 
 def detail(records):
@@ -320,6 +376,11 @@ def main():
     if not hasattr(st, "bottom"):
         st.error("固定ナビゲーションにはStreamlit 1.66.0が必要です。requirements.txtのバージョンで起動してください。")
         st.stop()
+    try:
+        # キーを環境変数にも展開させる（external_apiはStreamlitに依存しない）。
+        st.secrets.load_if_toml_exists()
+    except Exception:
+        pass
     st.session_state.setdefault("page", "home")
     if st.session_state.get("flash"):
         st.success(st.session_state.pop("flash"))

@@ -4,3 +4,5 @@ data/images/
 data/*.lock
 data/*.tmp
 tests/.scratch/
+# APIキー。各自 .streamlit/secrets.toml.example をコピーして作る
+.streamlit/secrets.toml

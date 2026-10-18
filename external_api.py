@@ -1,5 +1,6 @@
-"""失敗時も手入力を続けられるISBN取得。画面やJSONには触らない。"""
+"""失敗時も手入力を続けられるISBN・映像作品の取得。画面やJSONには触らない。"""
 import json
+import os
 import re
 from urllib.error import URLError
 from urllib.parse import urlencode
@@ -7,6 +8,11 @@ from urllib.request import Request, urlopen
 
 HEADERS = {"User-Agent": "ContentRecordApp/1.0"}
 MAX_RESPONSE_BYTES = 2_000_000
+TMDB_API_BASE = "https://api.themoviedb.org/3"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
+ANNICT_API_BASE = "https://api.annict.com/v1"
+# キーは.streamlit/secrets.toml（Streamlitが環境変数にも展開する）か環境変数で渡す。
+VIDEO_KEY_NAMES = {"TMDB": ("TMDB_API_READ_ACCESS_TOKEN", "TMDB_API_KEY"), "Annict": ("ANNICT_ACCESS_TOKEN",)}
 
 # Cコード（書籍JANコード2段目の分類記号）の各桁の意味。
 C_CODE_AUDIENCES = {
@@ -73,8 +79,8 @@ def classify_ccode(ccode):
     }
 
 
-def _get_json(url, timeout):
-    with urlopen(Request(url, headers=HEADERS), timeout=timeout) as response:
+def _get_json(url, timeout, headers=None):
+    with urlopen(Request(url, headers={**HEADERS, **(headers or {})}), timeout=timeout) as response:
         return json.loads(response.read(MAX_RESPONSE_BYTES).decode("utf-8"))
 
 
@@ -155,3 +161,149 @@ def lookup_isbn(value):
                 "suggested_category": "manga" if classification.get("format_code") == "9" else "book"}
     except (ValueError, URLError, TimeoutError, OSError, KeyError, TypeError, AttributeError):
         return None
+
+
+VIDEO_ERRORS = (ValueError, URLError, TimeoutError, OSError, KeyError, TypeError, AttributeError)
+
+
+def _secret(name):
+    return os.environ.get(name, "").strip()
+
+
+def video_sources(category):
+    """カテゴリの検索に使うサービス。アニメはAnnictを先に使い、無ければTMDBのテレビ作品で探す。"""
+    return ["Annict", "TMDB"] if category == "anime" else ["TMDB"]
+
+
+def missing_video_keys(category):
+    """検索に使えるキーが1つも無いときだけ、設定すべきキー名を返す。"""
+    if any(_secret(n) for s in video_sources(category) for n in VIDEO_KEY_NAMES[s]):
+        return []
+    return [VIDEO_KEY_NAMES[s][0] for s in video_sources(category)]
+
+
+def _tmdb_get(path, params):
+    token, api_key = _secret("TMDB_API_READ_ACCESS_TOKEN"), _secret("TMDB_API_KEY")
+    if not token and not api_key:
+        raise ValueError("TMDBのキーが未設定です。")
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        params = {**params, "api_key": api_key}
+    return _get_json(f"{TMDB_API_BASE}{path}?{urlencode(params)}", timeout=10, headers=headers)
+
+
+def _annict_get(path, params):
+    token = _secret("ANNICT_ACCESS_TOKEN")
+    if not token:
+        raise ValueError("Annictのキーが未設定です。")
+    return _get_json(f"{ANNICT_API_BASE}{path}?{urlencode(params)}", timeout=10,
+                     headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+
+
+def _join(names, limit=3):
+    return "、".join(list(dict.fromkeys(n for n in names if n))[:limit]) or None
+
+
+def _positive(value):
+    return value if isinstance(value, int) and value > 0 else None
+
+
+def _search_tmdb(query, category):
+    media = "movie" if category == "movie" else "tv"
+    params = {"query": query, "language": "ja-JP", "page": "1", "include_adult": "false"}
+    results = []
+    for item in _tmdb_get(f"/search/{media}", params).get("results") or []:
+        if not isinstance(item, dict) or not (item.get("title") or item.get("name")) or item.get("id") is None:
+            continue
+        poster = item.get("poster_path")
+        results.append({
+            "source": "TMDB", "external_id": str(item["id"]), "media": media,
+            "title": str(item.get("title") or item.get("name")),
+            "release_date": item.get("release_date") or item.get("first_air_date") or None,
+            "image_url": f"{TMDB_IMAGE_BASE}{poster}" if poster else None,
+            "creator": None, "studio": None, "metrics": {},
+        })
+    return results[:10]
+
+
+def _search_annict(query):
+    params = {"filter_title": query, "per_page": "10", "sort_watchers_count": "desc"}
+    results = []
+    for item in _annict_get("/works", params).get("works") or []:
+        if not isinstance(item, dict) or not item.get("title") or item.get("id") is None:
+            continue
+        image = (item.get("images") or {}).get("recommended_url") or None
+        results.append({
+            "source": "Annict", "external_id": str(item["id"]), "media": "tv",
+            "title": str(item["title"]),
+            "release_date": item.get("released_on") or item.get("season_name_text") or None,
+            # Annictの画像は外部サイトのURLで、httpや空文字のこともある。
+            "image_url": image if str(image).startswith("https://") else None,
+            "creator": None, "studio": None, "metrics": {"episodes": _positive(item.get("episodes_count"))},
+        })
+    return results
+
+
+def search_video(query, category):
+    """映画・ドラマはTMDB、アニメはAnnict（無ければTMDB）で作品名を検索する。
+
+    戻り値：候補のリスト（見つからなければ[]）。キー未設定・通信失敗などで1つも検索できなければNone。
+    各候補はsource・external_id・title・release_date・image_url・creator・studio・metricsを持つ。
+    """
+    query = str(query or "").strip()
+    if not query:
+        return None
+    searched = False
+    for source in video_sources(category):
+        try:
+            results = _search_annict(query) if source == "Annict" else _search_tmdb(query, category)
+        except VIDEO_ERRORS:
+            continue
+        searched = True
+        if results:
+            return results
+    return [] if searched else None
+
+
+def _tmdb_details(item):
+    media = item["media"]
+    payload = _tmdb_get(f"/{media}/{item['external_id']}",
+                        {"language": "ja-JP", **({"append_to_response": "credits"} if media == "movie" else {})})
+    poster = payload.get("poster_path")
+    details = {**item, "title": payload.get("title") or payload.get("name") or item["title"],
+               "image_url": f"{TMDB_IMAGE_BASE}{poster}" if poster else item["image_url"],
+               "studio": _join(c.get("name") for c in payload.get("production_companies") or [] if isinstance(c, dict))}
+    if media == "movie":
+        crew = (payload.get("credits") or {}).get("crew") or []
+        details["creator"] = _join(p.get("name") for p in crew if isinstance(p, dict) and p.get("job") == "Director")
+        details["metrics"] = {"minutes": _positive(payload.get("runtime"))}
+    else:
+        details["creator"] = _join(p.get("name") for p in payload.get("created_by") or [] if isinstance(p, dict))
+        runtimes = [r for r in payload.get("episode_run_time") or [] if _positive(r)]
+        # episode_run_timeは空のことが多いので、最新話の長さで補う。
+        runtime = round(sum(runtimes) / len(runtimes)) if runtimes else _positive((payload.get("last_episode_to_air") or {}).get("runtime"))
+        details["metrics"] = {"episodes": _positive(payload.get("number_of_episodes")), "minutes_per_episode": runtime}
+    return details
+
+
+def _annict_details(item):
+    staffs = _annict_get("/staffs", {"filter_work_id": item["external_id"], "per_page": "50"}).get("staffs") or []
+    def names(role):
+        for s in staffs:
+            if isinstance(s, dict) and s.get("role_text") == role:
+                yield s.get("name") or (s.get("person") or {}).get("name") or (s.get("organization") or {}).get("name")
+    return {**item, "creator": _join(names("監督")), "studio": _join(names("アニメーション制作")),
+            "metrics": {**item["metrics"], "minutes_per_episode": None}}
+
+
+def video_details(item):
+    """候補1件の詳細（監督・制作会社・上映時間／話数など）を取得する。失敗時は候補をそのまま返す。
+
+    戻り値のmetricsは、映画がminutes、アニメ・ドラマがepisodes・minutes_per_episode（取れない値はNone）。
+    """
+    try:
+        return _annict_details(item) if item["source"] == "Annict" else _tmdb_details(item)
+    except VIDEO_ERRORS:
+        return item
