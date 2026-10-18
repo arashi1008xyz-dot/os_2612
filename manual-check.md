@@ -11,7 +11,7 @@
 
 ### テスト用のデータで起動する（ほとんどの項目はこちら）
 ```
-cd /home/komakoma243/projects/os_2612
+cd os_2612   # clone したリポジトリのフォルダ
 rm -rf ~/content-test-data && mkdir -p ~/content-test-data && cp data/tags.json ~/content-test-data/
 CONTENT_RECORDS_DATA_DIR=~/content-test-data .venv/bin/python -m streamlit run app.py
 ```
@@ -106,7 +106,7 @@ PC と同じ Wi-Fi につないだスマホのブラウザから `http://<PC の
 
 **ステップ 1. アプリを起動する**（WSL のターミナル）
 ```
-cd /home/komakoma243/projects/os_2612
+cd os_2612   # clone したリポジトリのフォルダ
 git switch feature/city-integration
 git pull
 rm -rf ~/content-test-data && mkdir -p ~/content-test-data && cp data/tags.json ~/content-test-data/
@@ -133,8 +133,6 @@ ipconfig
 ```
 「Wireless LAN adapter Wi-Fi」の欄の **IPv4 アドレス**（例 `192.168.1.23`、`172.20.10.2` など）を控える。**172 で始まっていても、この欄のものなら使ってよい**（学校・会場の Wi-Fi やテザリングでは 172 になることがある）。使わないのは `vEthernet (WSL ...)` などの欄の番号と、ステップ 2 の WSL の IP と同じ番号。
 
-172.29.0.87
-
 **ステップ 5. スマホで開く**
 1. スマホを PC と同じ Wi-Fi につなぐ
 2. スマホのブラウザで `http://<WindowsのIP>:8501` を開く（例 `http://192.168.1.23:8501`）
@@ -150,7 +148,7 @@ ipconfig
 2026-10-18 に試して分かったこと（結局つながらず、スマホの確認は見送り）:
 - ブラウザの URL 欄に入れたアドレスが「検索」されるときは、全角の文字（`：` など）が混ざっているか、`http://` が抜けている。日本語入力をオフにし、半角で `http://` から入力する
 - iPhone の Chrome は「設定」→「Chrome」→「ローカルネットワーク」がオフだと PC に届かない（Safari なら不要）
-- 大学・会場の Wi-Fi（`172.29.x.x` など）は端末どうしの通信を禁止していることが多い
+- 大学・会場の Wi-Fi は端末どうしの通信を禁止していることが多い
 - iPhone のテザリングでも、Safari で「しばらく読み込んでタイムアウト」になった。Windows のファイアウォールの規則は有効で、パブリックのファイアウォールを一時的に切っても同じだったため、ファイアウォール以外（ウイルス対策ソフトやテザリング側）が原因と考えられる。原因は未特定
 - 見た目だけなら、PC の Chrome で F12 →「デバイスのツールバー」（`Ctrl + Shift + M`）で iPhone の幅にして確かめられる
 

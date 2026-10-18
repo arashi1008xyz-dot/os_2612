@@ -109,7 +109,7 @@ D4　タグの色が変更できたことは確認したが、タグの色はど
 
 **自分で起動するとき**（テスト用のデータフォルダを使い、`data/` を汚さない）
 ```
-cd /home/komakoma243/projects/os_2612
+cd os_2612   # clone したリポジトリのフォルダ
 mkdir -p ~/content-test-data && cp data/tags.json ~/content-test-data/
 CONTENT_RECORDS_DATA_DIR=~/content-test-data .venv/bin/python -m streamlit run app.py
 ```
