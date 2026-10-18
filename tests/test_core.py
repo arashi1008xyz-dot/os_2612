@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from PIL import Image
 import external_api
@@ -205,6 +206,48 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(external_api.normalize_isbn("978-4-10-101001-4"), "9784101010014")
         with self.assertRaises(ValueError):
             external_api.normalize_isbn("9784101010015")
+
+    def test_video_search_without_keys_returns_none(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(external_api.search_video("君の名は", "movie"))
+            self.assertEqual(external_api.missing_video_keys("anime"), ["ANNICT_ACCESS_TOKEN", "TMDB_API_READ_ACCESS_TOKEN"])
+
+    def test_tmdb_movie_details_map_to_metrics(self):
+        responses = [
+            {"results": [{"id": 1, "title": "テスト映画", "release_date": "2016-08-26", "poster_path": "/p.jpg"}]},
+            {"title": "テスト映画", "runtime": 107, "poster_path": "/p.jpg",
+             "production_companies": [{"name": "制作A"}], "credits": {"crew": [{"job": "Director", "name": "監督A"}]}},
+        ]
+        with mock.patch.dict("os.environ", {"TMDB_API_READ_ACCESS_TOKEN": "t"}, clear=True), \
+                mock.patch.object(external_api, "_get_json", side_effect=responses):
+            item = external_api.search_video("テスト", "movie")[0]
+            details = external_api.video_details(item)
+        self.assertEqual(details["metrics"], {"minutes": 107})
+        self.assertEqual((details["creator"], details["studio"]), ("監督A", "制作A"))
+        self.assertTrue(details["image_url"].startswith("https://"))
+
+    def test_anime_falls_back_to_tmdb_and_details_survive_errors(self):
+        responses = [{"works": []}, {"results": [{"id": 2, "name": "テストアニメ"}]}]
+        env = {"ANNICT_ACCESS_TOKEN": "a", "TMDB_API_READ_ACCESS_TOKEN": "t"}
+        with mock.patch.dict("os.environ", env, clear=True), \
+                mock.patch.object(external_api, "_get_json", side_effect=responses):
+            item = external_api.search_video("テスト", "anime")[0]
+        self.assertEqual(item["source"], "TMDB")
+        with mock.patch.object(external_api, "_get_json", side_effect=OSError):
+            self.assertEqual(external_api.video_details(item), item)
+
+    def test_annict_details_use_staff_roles(self):
+        responses = [
+            {"works": [{"id": 3, "title": "テストアニメ", "episodes_count": 12, "images": {"recommended_url": "http://x"}}]},
+            {"staffs": [{"role_text": "監督", "name": "監督B"}, {"role_text": "アニメーション制作", "name": "スタジオB"}]},
+        ]
+        with mock.patch.dict("os.environ", {"ANNICT_ACCESS_TOKEN": "a"}, clear=True), \
+                mock.patch.object(external_api, "_get_json", side_effect=responses):
+            item = external_api.search_video("テスト", "anime")[0]
+            details = external_api.video_details(item)
+        self.assertIsNone(item["image_url"])
+        self.assertEqual(details["metrics"]["episodes"], 12)
+        self.assertEqual((details["creator"], details["studio"]), ("監督B", "スタジオB"))
 
     def test_demo_load_only_into_empty_records(self):
         storage.load_demo()
