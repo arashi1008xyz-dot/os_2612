@@ -51,6 +51,15 @@ def icon(name):
     elif name == "stats":
         for box in ((20, 70, 36, 111), (56, 22, 72, 111), (92, 47, 108, 111)):
             rect(box)
+    elif name == "city":
+        rect((16, 52, 50, 110))
+        rect((56, 16, 92, 110))
+        rect((96, 70, 118, 110))
+        for y in (30, 48, 66, 84):
+            line([(66, y), (82, y)], 4)
+        for y in (66, 84):
+            line([(25, y), (41, y)], 4)
+        line([(8, 112), (122, 112)], 5)
     elif name == "search":
         d.ellipse((16, 13, 88, 85), outline=TEAL, width=6)
         line([(78, 76), (114, 112)], 7)

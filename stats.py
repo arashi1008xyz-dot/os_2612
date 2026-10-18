@@ -44,6 +44,30 @@ def metric_value(record, mode):
     return episodes * minutes if episodes is not None and minutes is not None else None
 
 
+# 街づくり（city-feature/record_city）の入力キー。「その他」は街に含めない。
+CITY_KEYS = {"book": "book_pages", "manga": "manga_pages", "anime": "anime_minutes",
+             "movie": "movie_minutes", "drama": "drama_minutes"}
+
+
+def city_amounts(records):
+    """全期間の累計（本・漫画はページ数、映像は分数）と、値が未入力で数えなかった記録の件数を返す。
+
+    集計の「量」と同じ値を使う。上限（1,200時間）を超えた分の扱いは record_city 側で行う。
+    """
+    amounts = dict.fromkeys(CITY_KEYS.values(), 0)
+    missing = 0
+    for record in records:
+        key = CITY_KEYS.get(record["category"])
+        if key is None:
+            continue
+        value = metric_value(record, "amount")
+        if value is None:
+            missing += 1
+        else:
+            amounts[key] += value
+    return amounts, missing
+
+
 def metric_unit(category, mode):
     if category == "other":
         return ""

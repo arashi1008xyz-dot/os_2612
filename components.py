@@ -38,9 +38,9 @@ def bottom_navigation():
     if active == "entry":
         return
     with st.bottom:
-        # 横並びコンテナでスマホでも4列を維持。独自CSSは不要。
+        # 横並びコンテナでスマホでも5列を維持。独自CSSは不要。
         with st.container(horizontal=True, wrap=False, gap="xsmall"):
-            for page, label in (("home", "ホーム"), ("entry", "記録"), ("stats", "集計"), ("search", "検索")):
+            for page, label in (("home", "ホーム"), ("entry", "記録"), ("stats", "集計"), ("search", "検索"), ("city", "街")):
                 selected = active == page or (page == "stats" and active == "category")
                 image_name = "record" if page == "entry" else page
                 st.button(button_label(image_name, label), key=f"nav_{page}",

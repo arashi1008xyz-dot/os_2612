@@ -1,6 +1,8 @@
 """コンテンツ記録。起動: python -m streamlit run app.py"""
 from copy import deepcopy
 from datetime import date
+from pathlib import Path
+import sys
 from uuid import uuid4
 import streamlit as st
 
@@ -10,6 +12,11 @@ import storage
 from components import apply_display_settings, bottom_navigation, navigate, record_card
 from domain import CATEGORIES, FONT_SIZES, FONTS, PERIODS, record_date, today
 from icons import icon
+
+# 街づくり機能は独立したパッケージ（city-feature/record_city）。インストールせずにそのまま読み込む。
+sys.path.insert(0, str(Path(__file__).resolve().parent / "city-feature"))
+from record_city import load_config as load_city_config  # noqa: E402
+from record_city.streamlit_view import render_city  # noqa: E402
 
 
 # 映像の数量欄の初期値。この値のままなら、作品検索の結果で上書きしてよい。
@@ -344,6 +351,20 @@ def detail(records):
             st.rerun()
 
 
+@st.cache_resource
+def city_config():
+    return load_city_config()
+
+
+def city(records):
+    amounts, missing = stats.city_amounts(records)
+    render_city(amounts, config=city_config(), theme="light")
+    st.caption("全期間の記録から計算します。本1ページ＝2分、漫画1ページ＝0.4分、映像は視聴した分数で換算し、600分で1棟建ちます。"
+               "「その他」は含みません。")
+    if missing:
+        st.caption(f"ページ数・分数が未入力の記録{missing}件は含みません。")
+
+
 def tag_management():
     st.title("タグ管理")
     st.caption("名前変更・削除・統合は、関連する記録にも反映されます。")
@@ -416,7 +437,7 @@ def main():
         page = st.session_state["page"]
         {"home": lambda: home(records), "entry": entry, "stats": lambda: statistics(records),
          "category": lambda: category_detail(records), "search": lambda: search(records),
-         "detail": lambda: detail(records), "tags": tag_management}.get(page, lambda: home(records))()
+         "detail": lambda: detail(records), "tags": tag_management, "city": lambda: city(records)}.get(page, lambda: home(records))()
         if page not in ("entry", "tags"):
             with st.expander("管理"):
                 st.button("タグ管理を開く", on_click=navigate, args=("tags",))
