@@ -209,6 +209,24 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             storage.save_settings({**storage.load_settings(), "font_size": "huge"})
 
+    def test_city_amounts_use_amount_values_and_skip_other(self):
+        records = [book(pages=100, total=300), dict(category="manga", recorded_on="2026-10-01", metrics={"volumes": 2}),
+                   dict(category="anime", recorded_on="2026-10-01", metrics={"episodes": 12, "minutes_per_episode": 24}),
+                   dict(category="movie", recorded_on="2026-10-01", metrics={"minutes": 120}),
+                   dict(category="other", recorded_on="2026-10-01", metrics={})]
+        amounts, missing = stats.city_amounts(records)
+        self.assertEqual(amounts, {"book_pages": 100, "manga_pages": 0, "anime_minutes": 288,
+                                   "movie_minutes": 120, "drama_minutes": 0})
+        self.assertEqual(missing, 1)
+
+    def test_city_keeps_total_beyond_display_limit(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "city-feature"))
+        from record_city import calculate_city
+        # 1,200時間（72,000分）を超えても、表示は120棟で止まり、累計は保持される。
+        state = calculate_city({"movie_minutes": 80000})
+        self.assertEqual((state.completed_visible, state.capped, int(state.total_minutes)), (120, True, 80000))
+
     def test_plain_markdown_keeps_title_text(self):
         import components
         self.assertEqual(components.plain_markdown("a*b_[x](y) #1"), r"a\*b\_\[x\]\(y\) \#1")

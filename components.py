@@ -20,12 +20,13 @@ def apply_display_settings(settings):
 
     Streamlitには画面から全体の文字を切り替える機能がないため、ここだけCSSを使う（仕様の例外）。
     文字の大きさは基準（rem）を変えるので、見出しなども同じ比率で変わる。アイコンのフォントは変えない。
+    グラフ（SVG）の文字も変えない。グラフは既定のフォントで軸の幅を測るため、変えると軸の数字が切れる。
     """
     size = FONT_SIZES[settings["font_size"]][1]
     family = FONTS[settings["font"]][1]
     st.html(f"<style>@import url('{GOOGLE_FONTS}');"
             f"html {{ font-size: {size} !important; }}"
-            f".stApp, .stApp *:not([data-testid='stIconMaterial']) {{ font-family: {family} !important; }}</style>")
+            f".stApp, .stApp *:not([data-testid='stIconMaterial']):not(svg *) {{ font-family: {family} !important; }}</style>")
 
 
 def plain_markdown(text):
@@ -38,9 +39,9 @@ def bottom_navigation():
     if active == "entry":
         return
     with st.bottom:
-        # 横並びコンテナでスマホでも4列を維持。独自CSSは不要。
+        # 横並びコンテナでスマホでも5列を維持。独自CSSは不要。
         with st.container(horizontal=True, wrap=False, gap="xsmall"):
-            for page, label in (("home", "ホーム"), ("entry", "記録"), ("stats", "集計"), ("search", "検索")):
+            for page, label in (("home", "ホーム"), ("entry", "記録"), ("stats", "集計"), ("search", "検索"), ("city", "街")):
                 selected = active == page or (page == "stats" and active == "category")
                 image_name = "record" if page == "entry" else page
                 st.button(button_label(image_name, label), key=f"nav_{page}",

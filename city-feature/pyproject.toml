@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "record-city"
+version = "1.0.1"
+description = "Independent record-amount calculation and isometric city rendering"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+streamlit = ["streamlit>=1.66,<2"]
+
+[project.scripts]
+record-city = "record_city.__main__:main"
+
+[tool.setuptools.package-data]
+record_city = ["data/*.json"]
+
+[tool.setuptools.packages.find]
+include = ["record_city*"]

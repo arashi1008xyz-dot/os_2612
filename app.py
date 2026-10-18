@@ -1,6 +1,8 @@
 """コンテンツ記録。起動: python -m streamlit run app.py"""
 from copy import deepcopy
 from datetime import date
+from pathlib import Path
+import sys
 from uuid import uuid4
 import streamlit as st
 
@@ -10,6 +12,11 @@ import storage
 from components import apply_display_settings, bottom_navigation, navigate, record_card
 from domain import CATEGORIES, FONT_SIZES, FONTS, PERIODS, record_date, today
 from icons import icon
+
+# 街づくり機能は独立したパッケージ（city-feature/record_city）。インストールせずにそのまま読み込む。
+sys.path.insert(0, str(Path(__file__).resolve().parent / "city-feature"))
+from record_city import load_config as load_city_config  # noqa: E402
+from record_city.streamlit_view import render_city  # noqa: E402
 
 
 # 映像の数量欄の初期値。この値のままなら、作品検索の結果で上書きしてよい。
@@ -174,12 +181,16 @@ def entry():
                     st.info("取得できませんでした。そのまま手入力できます。")
             result = st.session_state.get("isbn_result")
             if result:
-                st.write(result.get("title") or "タイトル未取得")
+                pages = (result.get("metrics") or {}).get("pages")
+                st.write((result.get("title") or "タイトル未取得") + (f"（{pages:,}ページ）" if pages else ""))
                 if st.button("空欄に反映", key=key("apply_isbn")):
                     for field in ("title", "creator", "publisher"):
                         if not draft.get(field) and result.get(field):
                             draft[field] = result[field]
                             st.session_state[key(field)] = result[field]
+                    if pages and not metrics.get("total_pages"):
+                        metrics["total_pages"] = pages
+                        st.session_state[key(f"{category}_total")] = pages
                     if draft.get("image", {}).get("type", "none") == "none" and result.get("image_url"):
                         draft["image"] = {"type": "url", "value": result["image_url"]}
                     st.session_state.pop("isbn_result", None)
@@ -272,11 +283,10 @@ def entry():
 def video_lookup(draft, category, metrics, key):
     """作品名からTMDB／Annictで検索し、空欄と初期値のままの数量欄だけを埋める。"""
     with st.expander("作品名から入力（任意）"):
-        missing = external_api.missing_video_keys(category)
-        if missing:
-            st.caption(f"検索には .streamlit/secrets.toml に {' または '.join(missing)} の設定が必要です。手入力はそのままできます。")
-        query = st.text_input("作品名", value=draft.get("title", ""), key=key("video_query"))
-        if st.button("作品を検索", key=key("video_search")):
+        # Enterでも検索する（ボタンだけだと、Enterで検索したつもりになりやすい）。
+        query = st.text_input("作品名", value=draft.get("title", ""), key=key("video_query"),
+                              on_change=st.session_state.update, kwargs={"video_search_requested": True})
+        if st.button("作品を検索", key=key("video_search")) or st.session_state.pop("video_search_requested", False):
             with st.spinner("作品を検索しています…"):
                 results = external_api.search_video(query, category)
             st.session_state["video_results"] = {"category": category, "items": results or []}
@@ -342,6 +352,20 @@ def detail(records):
             storage.delete_record(record["id"])
             navigate("home")
             st.rerun()
+
+
+@st.cache_resource
+def city_config():
+    return load_city_config()
+
+
+def city(records):
+    amounts, missing = stats.city_amounts(records)
+    render_city(amounts, config=city_config(), theme="light")
+    st.caption("全期間の記録から計算します。本1ページ＝2分、漫画1ページ＝0.4分、映像は視聴した分数で換算し、600分で1棟建ちます。"
+               "「その他」は含みません。")
+    if missing:
+        st.caption(f"ページ数・分数が未入力の記録{missing}件は含みません。")
 
 
 def tag_management():
@@ -416,7 +440,7 @@ def main():
         page = st.session_state["page"]
         {"home": lambda: home(records), "entry": entry, "stats": lambda: statistics(records),
          "category": lambda: category_detail(records), "search": lambda: search(records),
-         "detail": lambda: detail(records), "tags": tag_management}.get(page, lambda: home(records))()
+         "detail": lambda: detail(records), "tags": tag_management, "city": lambda: city(records)}.get(page, lambda: home(records))()
         if page not in ("entry", "tags"):
             with st.expander("管理"):
                 st.button("タグ管理を開く", on_click=navigate, args=("tags",))
