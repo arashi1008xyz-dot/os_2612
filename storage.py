@@ -201,10 +201,21 @@ def validate(data):
     return record
 
 
-def _image_bytes(upload):
+def check_image(upload):
+    """選んだ時点で、保存時と同じ条件（10MB以下・画像として読める）を確かめる。満たさなければValueError。"""
     raw = upload.getvalue() if hasattr(upload, "getvalue") else upload
     if not isinstance(raw, bytes) or len(raw) > 10 * 1024 * 1024:
         raise ValueError("画像は10MB以下にしてください。")
+    try:
+        with Image.open(BytesIO(raw)) as source:
+            source.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        raise ValueError("画像を読み込めません。JPEG・PNG・WebPをお試しください。") from exc
+    return raw
+
+
+def _image_bytes(upload):
+    raw = check_image(upload)
     try:
         with Image.open(BytesIO(raw)) as source:
             if source.width * source.height > 25_000_000:

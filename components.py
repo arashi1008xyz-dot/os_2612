@@ -40,8 +40,10 @@ def record_card(record, on_open, detailed=False):
                 else:
                     st.image(icon(record["category"]), width=56)
             with st.container(width="stretch"):
+                # 幅を文字に合わせて左端に置く。stretchにするとボタンの文字が中央寄せになり、
+                # 左寄せの説明文と記録ごとに位置がずれる。
                 st.button(record["title"], key=f"open_{record['id']}", type="tertiary",
-                          width="stretch", on_click=on_open, args=(record["id"],))
+                          width="content", on_click=on_open, args=(record["id"],))
                 view = record_view(record)
                 if detailed:
                     st.caption(record_date(record).replace("-", "/"))

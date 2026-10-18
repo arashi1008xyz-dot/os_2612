@@ -187,8 +187,15 @@ def entry():
     if category in VIDEO_DEFAULTS:
         video_lookup(draft, category, metrics, key)
     uploaded = st.file_uploader("カバー画像（任意）", type=["jpg", "jpeg", "png", "webp"], key=key("upload"))
+    upload_error = None
     if uploaded is not None:
-        st.session_state["draft_upload"] = uploaded.getvalue()
+        # 読めないファイルを下書きに残すと、プレビューで毎回エラーになり入力画面が使えなくなる。
+        try:
+            st.session_state["draft_upload"] = storage.check_image(uploaded)
+        except ValueError as exc:
+            upload_error = str(exc)
+            st.session_state.pop("draft_upload", None)
+            st.error(upload_error)
     if st.session_state.get("draft_upload"):
         st.image(st.session_state["draft_upload"], width=90)
     else:
@@ -244,6 +251,8 @@ def entry():
             if source:
                 image_upload = source.read_bytes()
         try:
+            if upload_error and not remove_image:
+                raise ValueError(upload_error)
             kwargs = dict(uploaded_file=image_upload, tag_names=st.session_state["draft_tags"])
             if draft.get("id"):
                 saved = storage.update_record(draft["id"], payload, expected_updated_at=draft.get("updated_at"), **kwargs)

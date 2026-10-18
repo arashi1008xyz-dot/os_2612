@@ -89,7 +89,10 @@ def _openlibrary_cover(isbn):
     query = urlencode({"bibkeys": f"ISBN:{isbn}", "jscmd": "data", "format": "json"})
     try:
         book = _get_json(f"https://openlibrary.org/api/books?{query}", timeout=8).get(f"ISBN:{isbn}")
-        return str(book["thumbnail_url"]) if isinstance(book, dict) and book.get("thumbnail_url") else None
+        # jscmd=dataでは表紙はcover（small・medium・large）に入る。thumbnail_urlはjscmd=viewapiの項目。
+        cover = book.get("cover") if isinstance(book, dict) else None
+        url = (cover.get("medium") or cover.get("small")) if isinstance(cover, dict) else None
+        return str(url) if url else None
     except (ValueError, URLError, TimeoutError, OSError, AttributeError):
         return None
 
