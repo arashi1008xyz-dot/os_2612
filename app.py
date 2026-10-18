@@ -7,8 +7,8 @@ import streamlit as st
 import external_api
 import stats
 import storage
-from components import bottom_navigation, navigate, record_card
-from domain import CATEGORIES, PERIODS, record_date, today
+from components import apply_display_settings, bottom_navigation, navigate, record_card
+from domain import CATEGORIES, FONT_SIZES, FONTS, PERIODS, record_date, today
 from icons import icon
 
 
@@ -380,6 +380,23 @@ def tag_management():
             st.rerun()
 
 
+def save_display_setting(name):
+    value = st.session_state.get(f"display_{name}")
+    if value:
+        storage.save_settings({**storage.load_settings(), name: value})
+
+
+def display_settings():
+    settings = storage.load_settings()
+    st.radio("文字の大きさ", list(FONT_SIZES), index=list(FONT_SIZES).index(settings["font_size"]),
+             format_func=lambda k: FONT_SIZES[k][0], horizontal=True, key="display_font_size",
+             on_change=save_display_setting, args=("font_size",))
+    st.selectbox("フォント", list(FONTS), index=list(FONTS).index(settings["font"]),
+                 format_func=lambda k: FONTS[k][0], key="display_font",
+                 on_change=save_display_setting, args=("font",))
+    st.caption("この PC での表示にだけ反映されます。BIZ UDP フォントはインターネット接続が必要です。")
+
+
 def main():
     st.set_page_config(page_title="コンテンツ記録", page_icon="📖", layout="centered")
     if not hasattr(st, "bottom"):
@@ -394,6 +411,7 @@ def main():
     if st.session_state.get("flash"):
         st.success(st.session_state.pop("flash"))
     try:
+        apply_display_settings(storage.load_settings())
         records = storage.load_records()
         page = st.session_state["page"]
         {"home": lambda: home(records), "entry": entry, "stats": lambda: statistics(records),
@@ -402,6 +420,7 @@ def main():
         if page not in ("entry", "tags"):
             with st.expander("管理"):
                 st.button("タグ管理を開く", on_click=navigate, args=("tags",))
+                display_settings()
         if page == "tags":
             st.button("ホームへ戻る", on_click=navigate, args=("home",))
         bottom_navigation()

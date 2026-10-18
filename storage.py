@@ -14,7 +14,7 @@ import unicodedata
 from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
-from domain import CATEGORIES, JST
+from domain import CATEGORIES, DEFAULT_SETTINGS, FONT_SIZES, FONTS, JST
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("CONTENT_RECORDS_DATA_DIR", ROOT / "data"))
@@ -97,11 +97,14 @@ def get_record(record_id):
 
 def load_settings():
     with _locked():
-        return _read("settings.json", {"metric_mode": "amount"})
+        # 項目が増える前のsettings.jsonでも、足りない項目は既定値で補う。
+        return {**DEFAULT_SETTINGS, **_read("settings.json", {})}
 
 
 def save_settings(settings):
-    if settings.get("metric_mode") not in ("amount", "count"):
+    settings = {**DEFAULT_SETTINGS, **settings}
+    if (settings.get("metric_mode") not in ("amount", "count") or settings.get("font") not in FONTS
+            or settings.get("font_size") not in FONT_SIZES):
         raise ValueError("表示設定が正しくありません。")
     with _locked():
         _write("settings.json", settings)

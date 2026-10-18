@@ -202,6 +202,17 @@ class CoreTests(unittest.TestCase):
         storage.save_settings({"metric_mode":"count"})
         self.assertEqual(storage.load_settings()["metric_mode"], "count")
 
+    def test_display_settings_defaults_and_validation(self):
+        self.assertEqual((storage.load_settings()["font"], storage.load_settings()["font_size"]), ("biz_ud_gothic", "normal"))
+        storage.save_settings({**storage.load_settings(), "font": "biz_ud_mincho", "font_size": "xlarge"})
+        self.assertEqual(storage.load_settings()["font_size"], "xlarge")
+        with self.assertRaises(ValueError):
+            storage.save_settings({**storage.load_settings(), "font_size": "huge"})
+
+    def test_plain_markdown_keeps_title_text(self):
+        import components
+        self.assertEqual(components.plain_markdown("a*b_[x](y) #1"), r"a\*b\_\[x\]\(y\) \#1")
+
     def test_isbn_checksum(self):
         self.assertEqual(external_api.normalize_isbn("978-4-10-101001-4"), "9784101010014")
         with self.assertRaises(ValueError):

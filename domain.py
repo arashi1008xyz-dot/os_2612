@@ -6,6 +6,12 @@ CATEGORIES = {
     "movie": "映画", "drama": "ドラマ", "other": "その他",
 }
 PERIODS = {"this_year": "今年", "last_12_months": "過去12か月", "all": "全期間"}
+# 表示設定。値は（画面の表示名, CSSの値）。
+FONT_SIZES = {"small": ("小", "14px"), "normal": ("標準", "16px"), "large": ("大", "18px"), "xlarge": ("特大", "20px")}
+FONTS = {"biz_ud_gothic": ("BIZ UDPゴシック", '"BIZ UDPGothic", sans-serif'),
+         "biz_ud_mincho": ("BIZ UDP明朝", '"BIZ UDPMincho", serif'),
+         "system": ("端末の標準", "sans-serif")}
+DEFAULT_SETTINGS = {"metric_mode": "amount", "font": "biz_ud_gothic", "font_size": "normal"}
 JST = timezone(timedelta(hours=9))
 
 

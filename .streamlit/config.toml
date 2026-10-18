@@ -5,6 +5,8 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F7F8"
 textColor = "#17283E"
 font = "sans-serif"
+# h1〜h5。h5は記録のタイトルで、日付の見出し（h3）と本文の中間の大きさ。
+headingFontSizes = ["2.75rem", "2.25rem", "1.75rem", "1.5rem", "1.375rem"]
 
 [server]
 maxUploadSize = 10
